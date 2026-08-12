@@ -22,10 +22,10 @@ export default function PlayerBar() {
 
   return (
     <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
-      <div className="flex min-w-[380px] items-center gap-5 rounded-full border border-black/5 bg-white/70 px-5 py-3 shadow-xl backdrop-blur-2xl">
+      <div className="flex min-w-[380px] items-center gap-5 rounded-full border border-[color:var(--border-color)] bg-[color:var(--glass-bg)] px-5 py-3 shadow-xl backdrop-blur-2xl">
         <div className="w-44">
-          <p className="truncate text-sm font-semibold text-neutral-900">{label}</p>
-          <p className="text-xs text-neutral-400">{MODE_LABEL[mode]}模式</p>
+          <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{label}</p>
+          <p className="text-xs text-[color:var(--text-muted)]">{MODE_LABEL[mode]}模式</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -33,7 +33,7 @@ export default function PlayerBar() {
             onClick={() => (status === 'running' ? pauseTimer() : status === 'paused' ? resumeTimer() : undefined)}
             disabled={!active}
             aria-label={status === 'running' ? '暂停' : '继续'}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-700 active:scale-95 disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--text-primary)] text-[color:var(--bg-primary)] transition hover:opacity-80 active:scale-95 disabled:opacity-40"
           >
             {status === 'running' ? <Pause size={16} strokeWidth={2} /> : <Play size={16} strokeWidth={2} />}
           </button>
@@ -41,7 +41,7 @@ export default function PlayerBar() {
             onClick={() => endTimer(false)}
             disabled={!active}
             aria-label="结束"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-hover active:scale-95 disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--accent-color)] text-white transition hover:bg-[color:var(--accent-hover)] active:scale-95 disabled:opacity-40"
           >
             <Square size={14} strokeWidth={2} fill="currentColor" />
           </button>
@@ -49,13 +49,13 @@ export default function PlayerBar() {
 
         <div className="flex items-center gap-2">
           <svg width="40" height="40" viewBox="0 0 40 40">
-            <circle cx="20" cy="20" r={R} fill="none" stroke="#e8e8ed" strokeWidth="4" />
+            <circle cx="20" cy="20" r={R} fill="none" stroke="var(--border-color)" strokeWidth="4" />
             <circle
-              cx="20" cy="20" r={R} fill="none" stroke="#fa2d48" strokeWidth="4" strokeLinecap="round"
+              cx="20" cy="20" r={R} fill="none" stroke="var(--pomodoro-primary)" strokeWidth="4" strokeLinecap="round"
               strokeDasharray={`${CIRC} ${CIRC}`} strokeDashoffset={CIRC * (1 - progress)} transform="rotate(-90 20 20)"
             />
           </svg>
-          <span className="w-12 text-right font-mono text-sm tabular-nums text-neutral-700">{fmt(remainingSeconds)}</span>
+          <span className="w-12 text-right font-mono text-sm tabular-nums text-[color:var(--text-secondary)]">{fmt(remainingSeconds)}</span>
         </div>
       </div>
     </div>

@@ -15,7 +15,11 @@ function ColumnDropZone({ columnId, children }: { columnId: string; children: Re
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[240px] flex-col rounded-2xl p-3 transition-colors ${isOver ? 'bg-primary/10 ring-2 ring-primary/40' : 'bg-white/60'} backdrop-blur-sm`}
+      className={`flex min-h-[240px] flex-col rounded-2xl p-3 transition-colors ${
+        isOver
+          ? 'bg-[color:var(--accent-muted)] ring-2 ring-[color:var(--accent-color)]/40'
+          : 'bg-[color:var(--card-glass-bg)] backdrop-blur-sm'
+      }`}
       style={{ minHeight: 240 }}
     >
       {children}
@@ -118,20 +122,20 @@ export default function KanbanPage() {
     <div>
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">任务看板</h1>
-          <p className="mt-1 text-sm text-neutral-500">拖拽卡片管理你的任务流程</p>
+          <h1 className="text-2xl font-bold text-[color:var(--text-primary)]">任务看板</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">拖拽卡片管理你的任务流程</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="w-56"><SearchBar value={query} onChange={setQuery} /></div>
           <button
             onClick={() => { setEditing(null); setModalOpen(true); }}
-            className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-hover active:scale-95"
+            className="rounded-full bg-[color:var(--accent-color)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[color:var(--accent-hover)] active:scale-95"
           >
             ＋ 新建任务
           </button>
           <button
             onClick={() => setAddingColumn(true)}
-            className="rounded-full border border-neutral-300 bg-white px-5 py-2.5 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 active:scale-95"
+            className="rounded-full border border-[color:var(--border-color)] bg-[color:var(--surface-color)] px-5 py-2.5 text-sm font-semibold text-[color:var(--text-secondary)] transition hover:bg-[color:var(--hover-bg)] active:scale-95"
           >
             ＋ 新建清单
           </button>
@@ -139,22 +143,22 @@ export default function KanbanPage() {
       </div>
 
       {addingColumn && (
-        <div className="mt-4 flex items-center gap-2 rounded-2xl border border-primary/30 bg-primary/5 p-3">
+        <div className="mt-4 flex items-center gap-2 rounded-2xl border border-[color:var(--accent-color)]/30 bg-[color:var(--accent-muted)] p-3">
           <input
             value={newColumnTitle}
             onChange={(e) => setNewColumnTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleAddColumn(); if (e.key === 'Escape') setAddingColumn(false); }}
             placeholder="清单名称"
             autoFocus
-            className="flex-1 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+            className="flex-1 rounded-xl border border-[color:var(--border-color)] bg-[color:var(--surface-color)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent-color)]"
           />
-          <button onClick={handleAddColumn} className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-white">添加</button>
-          <button onClick={() => { setAddingColumn(false); setNewColumnTitle(''); }} className="rounded-full px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100">取消</button>
+          <button onClick={handleAddColumn} className="rounded-full bg-[color:var(--accent-color)] px-4 py-2 text-sm font-medium text-white">添加</button>
+          <button onClick={() => { setAddingColumn(false); setNewColumnTitle(''); }} className="rounded-full px-4 py-2 text-sm text-[color:var(--text-muted)] hover:bg-[color:var(--hover-bg)]">取消</button>
         </div>
       )}
 
       {loading ? (
-        <div className="mt-16 text-center text-sm text-neutral-400">加载中…</div>
+        <div className="mt-16 text-center text-sm text-[color:var(--text-muted)]">加载中…</div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={(e) => setActiveId(String(e.active.id))} onDragEnd={handleDragEnd}>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -171,20 +175,20 @@ export default function KanbanPage() {
                           onChange={(e) => setEditingColumnTitle(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') handleRenameColumn(column.id); if (e.key === 'Escape') setEditingColumnId(null); }}
                           autoFocus
-                          className="flex-1 rounded-md border border-primary px-2 py-1 text-sm outline-none"
+                          className="flex-1 rounded-md border border-[color:var(--accent-color)] bg-[color:var(--surface-color)] px-2 py-1 text-sm text-[color:var(--text-primary)] outline-none"
                         />
-                        <button onClick={() => handleRenameColumn(column.id)} className="rounded px-2 py-1 text-xs text-primary hover:bg-primary/10">保存</button>
-                        <button onClick={() => setEditingColumnId(null)} className="rounded px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100">取消</button>
+                        <button onClick={() => handleRenameColumn(column.id)} className="rounded px-2 py-1 text-xs text-[color:var(--accent-color)] hover:bg-[color:var(--accent-muted)]">保存</button>
+                        <button onClick={() => setEditingColumnId(null)} className="rounded px-2 py-1 text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--hover-bg)]">取消</button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 min-w-0">
                         <h2
                           onDoubleClick={() => { setEditingColumnId(column.id); setEditingColumnTitle(column.title); }}
-                          className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-neutral-800 hover:text-primary transition"
+                          className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[color:var(--text-primary)] hover:text-[color:var(--accent-color)] transition"
                           title="双击重命名"
                         >
                           <span>{column.title}</span>
-                          <span className="rounded-full bg-appbg px-2 py-0.5 text-xs text-neutral-500">{colTasks.length}</span>
+                          <span className="rounded-full bg-[color:var(--bg-secondary)] px-2 py-0.5 text-xs text-[color:var(--text-muted)]">{colTasks.length}</span>
                         </h2>
                       </div>
                     )}
@@ -192,20 +196,20 @@ export default function KanbanPage() {
                       <button
                         onClick={() => { setEditing(null); setModalOpen(true); useStore.setState({ modalDefaultColumn: column.id }); }}
                         aria-label={`添加到${column.title}`}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 p-1 transition-colors hover:bg-gray-100 hover:text-gray-700 active:scale-95"
+                        className="flex h-7 w-7 items-center justify-center rounded-md p-1 text-[color:var(--text-muted)] transition-colors hover:bg-[color:var(--hover-bg)] hover:text-[color:var(--text-primary)] active:scale-95"
                       >
                         <Plus size={14} strokeWidth={1.75} />
                       </button>
                       <button
                         onClick={() => { setEditingColumnId(column.id); setEditingColumnTitle(column.title); }}
-                        className="flex h-7 w-7 items-center justify-center rounded-md p-1 text-gray-400 opacity-0 transition-all duration-200 hover:bg-gray-100 hover:text-primary group-hover:opacity-100 active:scale-95"
+                        className="flex h-7 w-7 items-center justify-center rounded-md p-1 text-[color:var(--text-muted)] opacity-0 transition-all duration-200 hover:bg-[color:var(--hover-bg)] hover:text-[color:var(--accent-color)] group-hover:opacity-100 active:scale-95"
                         title="重命名"
                       >
                         <Pencil size={14} strokeWidth={1.75} />
                       </button>
                       <button
                         onClick={() => handleDeleteColumn(column)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md p-1 text-gray-400 opacity-0 transition-all duration-200 hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 active:scale-95"
+                        className="flex h-7 w-7 items-center justify-center rounded-md p-1 text-[color:var(--text-muted)] opacity-0 transition-all duration-200 hover:bg-[color:var(--tag-red)]/10 hover:text-[color:var(--tag-red)] group-hover:opacity-100 active:scale-95"
                         title="删除清单"
                       >
                         <Trash2 size={14} strokeWidth={1.75} />
@@ -229,7 +233,7 @@ export default function KanbanPage() {
                         ))}
                       </AnimatePresence>
                       {colTasks.length === 0 && (
-                        <div className="flex min-h-[160px] flex-1 items-center justify-center rounded-2xl border-2 border-dashed border-neutral-200 py-10 text-xs text-neutral-400 transition-colors pointer-events-none">
+                        <div className="flex min-h-[160px] flex-1 items-center justify-center rounded-2xl border-2 border-dashed border-[color:var(--border-color)] py-10 text-xs text-[color:var(--text-muted)] transition-colors pointer-events-none">
                           拖拽任务到这里
                         </div>
                       )}

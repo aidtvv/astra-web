@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Timer } from 'lucide-react';
+import { Calendar, Clock, Pencil, Play, Timer, Trash2 } from 'lucide-react';
 import type { Task } from '../types';
 import { useStore } from '../store';
 
@@ -12,17 +12,17 @@ const PRIORITY_LABEL: Record<Task['priority'], string> = {
 };
 
 const PRIORITY_DOT: Record<Task['priority'], string> = {
-  highest: 'bg-red-500',
-  high: 'bg-orange-500',
-  medium: 'bg-amber-500',
-  low: 'bg-green-500',
+  highest: 'bg-[color:var(--tag-red)]',
+  high: 'bg-[color:var(--tag-orange)]',
+  medium: 'bg-[color:var(--tag-yellow)]',
+  low: 'bg-[color:var(--tag-green)]',
 };
 
 const PRIORITY_BADGE: Record<Task['priority'], string> = {
-  highest: 'bg-red-500/10 text-red-500',
-  high: 'bg-orange-500/10 text-orange-500',
-  medium: 'bg-amber-500/10 text-amber-600',
-  low: 'bg-green-500/10 text-green-600',
+  highest: 'bg-[color:var(--tag-red)]/10 text-[color:var(--tag-red)]',
+  high: 'bg-[color:var(--tag-orange)]/10 text-[color:var(--tag-orange)]',
+  medium: 'bg-[color:var(--tag-yellow)]/10 text-[color:var(--tag-yellow)]',
+  low: 'bg-[color:var(--tag-green)]/10 text-[color:var(--tag-green)]',
 };
 
 function formatTime(ts: number | null): string {
@@ -91,25 +91,50 @@ const TaskCard = forwardRef<HTMLElement, TaskCardProps>(function TaskCard({ task
     <article
       ref={ref}
       {...rest}
-      className="group cursor-grab rounded-2xl bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] transition hover:shadow-[0_2px_6px_rgba(0,0,0,0.06),0_8px_24px_rgba(0,0,0,0.06)] active:cursor-grabbing"
+      className="group cursor-grab rounded-2xl bg-[color:var(--card-glass-bg)] border border-[color:var(--card-glass-border)] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] backdrop-blur-sm transition hover:shadow-[0_2px_6px_rgba(0,0,0,0.06),0_8px_24px_rgba(0,0,0,0.06)] active:cursor-grabbing"
       style={{ borderRadius: 16 }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-2.5 flex-1">
+      <div className="relative flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
           <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} />
-          <h3 className="truncate text-[17px] font-semibold leading-tight text-black">
+          <h3 className="w-0 flex-1 truncate text-[17px] font-semibold leading-tight text-[color:var(--text-primary)]">
             {task.title}
           </h3>
         </div>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${PRIORITY_BADGE[task.priority]}`}
-        >
-          {PRIORITY_LABEL[task.priority]}
-        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${PRIORITY_BADGE[task.priority]}`}
+          >
+            {PRIORITY_LABEL[task.priority]}
+          </span>
+        </div>
+        <div className="absolute right-0 top-0 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            onClick={() => onEdit(task)}
+            className="rounded-md p-1.5 text-[color:var(--text-muted)] transition-colors hover:bg-[color:var(--hover-bg)] hover:text-[color:var(--text-primary)]"
+            title="编辑"
+          >
+            <Pencil size={14} strokeWidth={1.75} />
+          </button>
+          <button
+            onClick={handleFocus}
+            className="rounded-md p-1.5 text-[color:var(--text-muted)] transition-colors hover:bg-[color:var(--hover-bg)] hover:text-[color:var(--accent-color)]"
+            title="专注"
+          >
+            <Play size={14} strokeWidth={1.75} />
+          </button>
+          <button
+            onClick={handleDelete}
+            className="rounded-md p-1.5 text-[color:var(--text-muted)] transition-colors hover:bg-[color:var(--tag-red)]/10 hover:text-[color:var(--tag-red)]"
+            title="删除"
+          >
+            <Trash2 size={14} strokeWidth={1.75} />
+          </button>
+        </div>
       </div>
 
       {task.description && (
-        <p className="mt-1.5 truncate text-[14px] text-[#8E8E93]">
+        <p className="mt-1.5 truncate text-[14px] text-[color:var(--text-secondary)]">
           {task.description}
         </p>
       )}
@@ -117,7 +142,7 @@ const TaskCard = forwardRef<HTMLElement, TaskCardProps>(function TaskCard({ task
       {metaItems.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-4">
           {metaItems.map((item, i) => (
-            <span key={i} className="flex items-center gap-1.5 text-xs text-gray-400">
+            <span key={i} className="flex items-center gap-1.5 text-xs text-[color:var(--text-muted)]">
               {item.icon === 'calendar' && <Calendar size={14} strokeWidth={1.75} />}
               {item.icon === 'clock' && <Clock size={14} strokeWidth={1.75} />}
               {item.icon === 'timer' && <Timer size={14} strokeWidth={1.75} />}
@@ -127,26 +152,6 @@ const TaskCard = forwardRef<HTMLElement, TaskCardProps>(function TaskCard({ task
         </div>
       )}
 
-      <div className="mt-3 flex gap-1.5 opacity-0 transition group-hover:opacity-100">
-        <button
-          onClick={() => onEdit(task)}
-          className="rounded-full px-3 py-1 text-xs text-[#8E8E93] transition hover:bg-black/5 hover:text-black active:scale-95"
-        >
-          编辑
-        </button>
-        <button
-          onClick={handleFocus}
-          className="rounded-full px-3 py-1 text-xs text-[#8E8E93] transition hover:bg-black/5 hover:text-black active:scale-95"
-        >
-          专注
-        </button>
-        <button
-          onClick={handleDelete}
-          className="rounded-full px-3 py-1 text-xs text-[#8E8E93] transition hover:bg-red-50 hover:text-red-500 active:scale-95"
-        >
-          删除
-        </button>
-      </div>
     </article>
   );
 });

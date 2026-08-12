@@ -2,23 +2,12 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutGrid, Clock, BarChart3, LogOut } from 'lucide-react';
 import { useStore } from '../store';
 import SyncStatusButton from './SyncStatusButton';
+import { ThemeSwitcher } from './ThemeSwitcher';
 
 const NAV_ITEMS = [
-  {
-    to: '/',
-    label: '看板',
-    icon: LayoutGrid,
-  },
-  {
-    to: '/focus',
-    label: '专注',
-    icon: Clock,
-  },
-  {
-    to: '/stats',
-    label: '统计',
-    icon: BarChart3,
-  },
+  { to: '/', label: '看板', icon: LayoutGrid },
+  { to: '/focus', label: '专注', icon: Clock },
+  { to: '/stats', label: '统计', icon: BarChart3 },
 ];
 
 export default function Sidebar() {
@@ -30,17 +19,17 @@ export default function Sidebar() {
   const displayName = user?.nickname ?? '未登录';
 
   return (
-    <aside className="fixed left-4 top-4 bottom-4 z-50 flex w-60 flex-col overflow-hidden rounded-3xl bg-[#F5F5F7] shadow-lg shadow-black/5">
+    <aside className="fixed left-4 top-4 bottom-4 z-50 flex w-60 flex-col overflow-hidden rounded-3xl border border-[color:var(--border-color)] bg-[color:var(--bg-secondary)] shadow-lg">
       <div className="flex flex-1 flex-col p-4">
-        {/* Brand Section */}
-        <div className="flex items-center gap-2.5 px-2 py-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-sm font-bold text-white">
-            A
+        <div className="flex items-center justify-between px-2 py-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--text-primary)] text-sm font-bold text-[color:var(--bg-primary)]">
+              A
+            </div>
+            <span className="text-[15px] font-semibold tracking-tight text-[color:var(--text-primary)]">Astra</span>
           </div>
-          <span className="text-[15px] font-semibold tracking-tight text-neutral-900">Astra</span>
         </div>
 
-        {/* Navigation Section */}
         <nav className="mt-4 flex flex-1 flex-col gap-1">
           {NAV_ITEMS.map((item) => (
             <NavLink
@@ -50,8 +39,8 @@ export default function Sidebar() {
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-full px-3.5 py-2.5 text-[14px] transition-all duration-200 ${
                   isActive
-                    ? 'bg-neutral-200/80 font-semibold text-primary'
-                    : 'font-medium text-neutral-700 hover:bg-neutral-200/60 hover:text-neutral-900'
+                    ? 'bg-[color:var(--accent-muted)] font-semibold text-[color:var(--accent-color)]'
+                    : 'font-medium text-[color:var(--text-secondary)] hover:bg-[color:var(--hover-bg)] hover:text-[color:var(--text-primary)]'
                 }`
               }
             >
@@ -63,8 +52,11 @@ export default function Sidebar() {
           ))}
         </nav>
 
-        {/* Bottom Section */}
-        <div className="mt-4 flex flex-col gap-2">
+        <div className="mt-auto flex flex-col gap-2">
+          <div className="flex justify-center">
+            <ThemeSwitcher />
+          </div>
+
           <div className="flex items-center gap-2">
             <SyncStatusButton />
             <div className="min-w-0 flex-1">
@@ -75,7 +67,7 @@ export default function Sidebar() {
                     navigate('/login');
                   }
                 }}
-                className="flex w-full items-center gap-3 rounded-full px-3.5 py-2.5 text-[13px] font-medium text-neutral-600 transition-colors hover:bg-neutral-200/60 hover:text-neutral-900"
+                className="flex w-full items-center gap-3 rounded-full px-3.5 py-2.5 text-[13px] font-medium text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--hover-bg)] hover:text-[color:var(--text-primary)]"
               >
                 <LogOut size={16} strokeWidth={1.75} />
                 <span>退出登录</span>
@@ -83,13 +75,13 @@ export default function Sidebar() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-full px-2.5 py-2.5 transition-colors hover:bg-neutral-200/60">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-sm font-semibold text-white shadow-sm">
+          <div className="flex items-center gap-3 rounded-full px-2.5 py-2.5 transition-colors hover:bg-[color:var(--hover-bg)]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent-color)] text-sm font-semibold text-white shadow-sm">
               {initial}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] font-semibold text-neutral-900">{displayName}</div>
-              <div className="truncate text-[11px] text-neutral-500">
+              <div className="truncate text-[13px] font-semibold text-[color:var(--text-primary)]">{displayName}</div>
+              <div className="truncate text-[11px] text-[color:var(--text-muted)]">
                 {user ? (user.email || user.phone) : '点击登录'}
               </div>
             </div>

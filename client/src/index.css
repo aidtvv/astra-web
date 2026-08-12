@@ -21,18 +21,121 @@
   100% { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+:root {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F7F6F3;
+  --bg-tertiary: #EBEBEA;
+  --surface-color: #FFFFFF;
+  --surface-elevated: #F7F7F5;
+  --surface-overlay: rgba(15,15,15,0.04);
+  --text-primary: #37352F;
+  --text-secondary: #787774;
+  --text-muted: #9B9A97;
+  --border-color: #E9E9E7;
+  --border-light: rgba(233,233,231,0.5);
+  --glass-bg: rgba(255,255,255,0.72);
+  --glass-border: rgba(0,0,0,0.06);
+  --glass-shine: rgba(255,255,255,0.4);
+  --card-glass-bg: rgba(255,255,255,0.8);
+  --card-glass-border: rgba(0,0,0,0.06);
+  --card-glass-accent: rgba(35,131,226,0.18);
+  --hover-bg: rgba(55,53,47,0.04);
+  --selection-bg: #CADBEC;
+  --accent-color: #2383E2;
+  --accent-muted: rgba(35,131,226,0.12);
+  --accent-hover: #1E70C2;
+  --pomodoro-primary: #E03E3E;
+  --pomodoro-track: rgba(224,62,62,0.15);
+  --tag-red: #E03E3E;
+  --tag-blue: #2383E2;
+  --tag-green: #4DAB9A;
+  --tag-purple: #9065B0;
+  --tag-orange: #D77340;
+  --tag-yellow: #DFAB01;
+  --tag-pink: #C14C8A;
+  --tag-gray: #787774;
+}
+
 @layer base {
-  body {
-    @apply bg-appbg font-sans text-neutral-900 antialiased;
+  html {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
   }
+
+  body {
+    font-family: var(--font-sans, 'SF Pro Display', 'SF Pro Text', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: var(--selection-bg);
+  }
+
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-neutral-300;
+    background-color: var(--text-muted);
+    border-radius: 9999px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
+  }
+
+  input[type="text"],
+  input[type="time"],
+  input[type="date"],
+  input[type="email"],
+  input[type="password"],
+  select,
+  textarea {
+    color-scheme: light dark;
+  }
+
+  select option {
+    background-color: var(--surface-color);
+    color: var(--text-primary);
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .card-glass {
+    background: var(--card-glass-bg);
+    border: 1px solid var(--card-glass-border);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .surface-card {
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+  }
+
+  .btn-accent {
+    background-color: var(--accent-color);
+    color: white;
+    transition: background-color 0.15s ease;
+  }
+  .btn-accent:hover {
+    background-color: var(--accent-hover);
+  }
+
+  .hover-bg {
+    transition: background-color 0.15s ease;
+  }
+  .hover-bg:hover {
+    background-color: var(--hover-bg);
   }
 }

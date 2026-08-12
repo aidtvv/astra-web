@@ -107,29 +107,29 @@ export default function TaskModal({ open, onClose, task, columns }: TaskModalPro
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
-        className="w-full max-w-lg rounded-[18px] bg-white p-6 shadow-2xl"
+        className="w-full max-w-lg rounded-[18px] bg-[color:var(--surface-color)] border border-[color:var(--border-color)] p-6 shadow-2xl"
       >
-        <h2 className="text-lg font-bold text-neutral-900">{task ? '编辑任务' : '新建任务'}</h2>
+        <h2 className="text-lg font-bold text-[color:var(--text-primary)]">{task ? '编辑任务' : '新建任务'}</h2>
 
-        <label className="mt-5 block text-sm font-medium text-neutral-600">标题</label>
+        <label className="mt-5 block text-sm font-medium text-[color:var(--text-secondary)]">标题</label>
         <input
           autoFocus
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="要做点什么？"
-          className="mt-1.5 w-full rounded-xl border border-black/10 px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          className="mt-1.5 w-full rounded-xl border border-[color:var(--border-color)] bg-[color:var(--surface-color)] px-3.5 py-2.5 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent-color)] focus:ring-2 focus:ring-[color:var(--accent-color)]/20"
         />
 
-        <label className="mt-4 block text-sm font-medium text-neutral-600">备注</label>
+        <label className="mt-4 block text-sm font-medium text-[color:var(--text-secondary)]">备注</label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
           placeholder="补充细节…"
-          className="mt-1.5 w-full resize-none rounded-xl border border-black/10 px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          className="mt-1.5 w-full resize-none rounded-xl border border-[color:var(--border-color)] bg-[color:var(--surface-color)] px-3.5 py-2.5 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent-color)] focus:ring-2 focus:ring-[color:var(--accent-color)]/20"
         />
 
-        <label className="mt-4 block text-sm font-medium text-neutral-600">优先级</label>
+        <label className="mt-4 block text-sm font-medium text-[color:var(--text-secondary)]">优先级</label>
         <div className="mt-1.5 grid grid-cols-4 gap-2">
           {PRIORITIES.map((p) => (
             <button
@@ -137,7 +137,9 @@ export default function TaskModal({ open, onClose, task, columns }: TaskModalPro
               type="button"
               onClick={() => setPriority(p.value)}
               className={`rounded-full px-3 py-1.5 text-sm font-medium transition active:scale-95 ${
-                priority === p.value ? 'bg-primary text-white' : 'bg-appbg text-neutral-600 hover:bg-neutral-200'
+                priority === p.value
+                  ? 'bg-[color:var(--accent-color)] text-white'
+                  : 'bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)] hover:bg-[color:var(--hover-bg)]'
               }`}
             >
               {p.label}
@@ -147,11 +149,11 @@ export default function TaskModal({ open, onClose, task, columns }: TaskModalPro
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-neutral-600">清单</label>
+            <label className="block text-sm font-medium text-[color:var(--text-secondary)]">清单</label>
             <select
               value={columnId}
               onChange={(e) => setColumnId(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm outline-none focus:border-primary"
+              className="mt-1.5 w-full rounded-xl border border-[color:var(--border-color)] bg-[color:var(--surface-color)] px-3 py-2.5 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent-color)]"
             >
               {columns.map((c) => (
                 <option key={c.id} value={c.id}>{c.title}</option>
@@ -159,44 +161,44 @@ export default function TaskModal({ open, onClose, task, columns }: TaskModalPro
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-neutral-600">计划时间</label>
+            <label className="block text-sm font-medium text-[color:var(--text-secondary)]">计划时间</label>
             <input
               type="time"
               value={scheduledTime}
               onChange={(e) => setScheduledTime(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm outline-none focus:border-primary"
+              className="mt-1.5 w-full rounded-xl border border-[color:var(--border-color)] bg-[color:var(--surface-color)] px-3 py-2.5 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent-color)]"
             />
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-neutral-600">开始日期</label>
+            <label className="block text-sm font-medium text-[color:var(--text-secondary)]">开始日期</label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm outline-none focus:border-primary"
+              className="mt-1.5 w-full rounded-xl border border-[color:var(--border-color)] bg-[color:var(--surface-color)] px-3 py-2.5 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent-color)]"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-neutral-600">结束日期</label>
+            <label className="block text-sm font-medium text-[color:var(--text-secondary)]">结束日期</label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm outline-none focus:border-primary"
+              className="mt-1.5 w-full rounded-xl border border-[color:var(--border-color)] bg-[color:var(--surface-color)] px-3 py-2.5 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent-color)]"
             />
           </div>
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" onClick={onClose}
-            className="rounded-full px-5 py-2 text-sm font-medium text-neutral-500 transition hover:bg-appbg active:scale-95">
+            className="rounded-full px-5 py-2 text-sm font-medium text-[color:var(--text-secondary)] transition hover:bg-[color:var(--hover-bg)] active:scale-95">
             取消
           </button>
           <button type="submit" disabled={!title.trim()}
-            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white transition hover:bg-primary-hover active:scale-95 disabled:opacity-50">
+            className="rounded-full bg-[color:var(--accent-color)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--accent-hover)] active:scale-95 disabled:opacity-50">
             保存
           </button>
         </div>

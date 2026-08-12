@@ -55,7 +55,7 @@ export default function App() {
   }, [status, tick]);
 
   return (
-    <div className="min-h-screen bg-appbg">
+    <div className="min-h-screen bg-[color:var(--bg-primary)] text-[color:var(--text-primary)]">
       <Routes>
         <Route
           path="/login"

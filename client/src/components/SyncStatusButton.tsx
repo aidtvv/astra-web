@@ -16,9 +16,9 @@ const ANIMATION_EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
 const STATE_CONFIG: Record<SyncStatus, { bg: string; fg: string; hoverBg: string; tooltip: string }> = {
   idle: {
-    bg: 'bg-gray-100',
-    fg: 'text-gray-400',
-    hoverBg: 'hover:bg-gray-200',
+    bg: 'bg-[color:var(--surface-elevated)]',
+    fg: 'text-[color:var(--text-muted)]',
+    hoverBg: 'hover:bg-[color:var(--hover-bg)]',
     tooltip: '等待同步',
   },
   syncing: {
@@ -34,9 +34,9 @@ const STATE_CONFIG: Record<SyncStatus, { bg: string; fg: string; hoverBg: string
     tooltip: '已同步到云端',
   },
   error: {
-    bg: 'bg-rose-500/10',
-    fg: 'text-rose-500',
-    hoverBg: 'hover:bg-rose-500/20',
+    bg: 'bg-[color:var(--tag-red)]/10',
+    fg: 'text-[color:var(--tag-red)]',
+    hoverBg: 'hover:bg-[color:var(--tag-red)]/20',
     tooltip: '同步失败，点击重试',
   },
 };
@@ -151,14 +151,14 @@ export default function SyncStatusButton() {
         </span>
 
         {pendingCount > 0 && !hasErrors && (
-          <span className="absolute -top-1 -right-1 flex min-h-[16px] min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+          <span className="absolute -top-1 -right-1 flex min-h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[color:var(--tag-red)] px-1 text-[10px] font-bold text-white ring-2 ring-[color:var(--bg-primary)]">
             {pendingCount > 99 ? '99+' : pendingCount}
           </span>
         )}
 
         {syncStatus === 'synced' && !hasErrors && pendingCount === 0 && (
           <span
-            className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-white"
+            className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-[color:var(--bg-primary)]"
             style={{ animation: 'sync-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
           />
         )}
@@ -166,11 +166,11 @@ export default function SyncStatusButton() {
 
       {showTooltip && (
         <div
-          className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-neutral-900 px-3 py-1.5 text-[11px] font-medium text-white shadow-lg pointer-events-none"
+          className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[color:var(--surface-elevated)] border border-[color:var(--border-color)] px-3 py-1.5 text-[11px] font-medium text-[color:var(--text-primary)] shadow-lg pointer-events-none"
           style={{ animation: 'tooltip-fade 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
         >
           {tooltipText}
-          <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-neutral-900" />
+          <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-[color:var(--surface-elevated)] border-r border-b border-[color:var(--border-color)]" />
         </div>
       )}
     </div>

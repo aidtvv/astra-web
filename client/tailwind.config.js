@@ -1,20 +1,37 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        primary: { DEFAULT: '#fa2d48', hover: '#e0243d', soft: '#ffeef0' },
-        sidebar: '#1d1d1f',
-        appbg: '#ffffff',
+        primary: { DEFAULT: 'var(--accent-color)', hover: 'var(--accent-hover)', soft: 'var(--accent-muted)' },
+        appbg: 'var(--bg-primary)',
+        surface: 'var(--surface-color)',
+        'surface-elevated': 'var(--surface-elevated)',
+        sidebar: 'var(--bg-secondary)',
       },
-      // Design specifies `hover:scale-1.02`, which is not a default Tailwind
-      // scale key — add the token so the utility generates real CSS.
-      scale: {
-        '1.02': '1.02',
+      backgroundColor: {
+        'glass': 'var(--glass-bg)',
+        'card-glass': 'var(--card-glass-bg)',
+        'hover': 'var(--hover-bg)',
+      },
+      borderColor: {
+        'theme': 'var(--border-color)',
+        'glass': 'var(--glass-border)',
+        'card-glass': 'var(--card-glass-border)',
+      },
+      textColor: {
+        'theme': 'var(--text-primary)',
+        'secondary': 'var(--text-secondary)',
+        'muted': 'var(--text-muted)',
+        'accent': 'var(--accent-color)',
       },
       fontFamily: {
         sans: ['SF Pro Display', 'SF Pro Text', '-apple-system', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+      },
+      scale: {
+        '1.02': '1.02',
       },
     },
   },
