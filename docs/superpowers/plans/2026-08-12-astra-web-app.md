@@ -342,14 +342,16 @@ describe('PUT /api/columns/:id', () => {
 });
 
 describe('DELETE /api/columns/:id', () => {
-  it('deletes the column and cascades its tasks', async () => {
+  it('deletes the column and cascades its tasks via FK', async () => {
     const cols = (await request(app).get('/api/columns')).body as { id: number }[];
-    await request(app).post('/api/tasks').send({ title: 'T', columnId: cols[0].id });
+    // Insert a task directly into the DB — the tasks API arrives in Task 3.
+    db.prepare('INSERT INTO tasks (title, columnId, createdAt) VALUES (?, ?, ?)')
+      .run('T', cols[0].id, new Date().toISOString());
     const res = await request(app).delete(`/api/columns/${cols[0].id}`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
-    const tasks = await request(app).get('/api/tasks');
-    expect(tasks.body).toHaveLength(0);
+    const count = db.prepare('SELECT COUNT(*) AS c FROM tasks').get() as { c: number };
+    expect(count.c).toBe(0);
   });
   it('404 for unknown id', async () => {
     const res = await request(app).delete('/api/columns/999');
@@ -731,9 +733,9 @@ describe('POST /api/focus/end', () => {
   it('adds to daily_activities for completed sessions', async () => {
     const started = await request(app).post('/api/focus/start').send({ mode: 'free' });
     await request(app).post('/api/focus/end').send({ id: started.body.id, duration: 30, completed: true });
-    const daily = await request(app).get('/api/stats/daily?days=1');
-    expect(daily.status).toBe(200);
-    expect(daily.body[0].minutes).toBe(30);
+    // Assert the side effect directly in the DB — the stats API arrives in Task 5.
+    const row = db.prepare('SELECT minutes FROM daily_activities').get() as { minutes: number };
+    expect(row.minutes).toBe(30);
   });
 
   it('does not accumulate when aborted (completed=false)', async () => {
