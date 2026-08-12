@@ -1,997 +1,33 @@
-# Astra Web App Implementation Plan
+# Astra Web App Implementation Plan (Frontend-Only)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build "Astra", a personal productivity web app with Kanban task management, Pomodoro focus timers, and daily statistics, styled after Apple Music Web's flat minimal UI with glassmorphism.
 
-**Architecture:** Two independent packages under `D:\CheckBox\Astra\` — `server/` (Express + better-sqlite3 REST API on port 3001) and `client/` (React 18 + Vite + Tailwind SPA on port 5173). Vite proxies `/api` → `localhost:3001`. A root `package.json` uses `concurrently` to run both in dev.
+**Architecture:** **Frontend-only** — the `server/` directory is an **empty shell** (stub, not implemented). The React SPA (`client/`) runs standalone on Vite port 5173 and persists all data **client-side in localStorage** through a mock `services/api.ts` that exposes the same method signatures the store expects. No HTTP API is built or called.
 
-**Tech Stack:** React 18, TypeScript, Vite, TailwindCSS 3, Framer Motion, Zustand, @dnd-kit, react-router-dom; Node.js, Express, better-sqlite3, cors; vitest + supertest for tests.
+**Tech Stack:** React 18, TypeScript, Vite, TailwindCSS 3, Framer Motion, Zustand, @dnd-kit, react-router-dom. Persistence: localStorage (key `astra-db`). Tests: vitest + @testing-library/react.
 
 ## Global Constraints
 
 - **React must be 18.x** (NOT 19). Pin `react@^18.3.1`, `react-dom@^18.3.1`.
 - **Tailwind must be 3.x** (config-file based). The project uses `tailwind.config.js` + `postcss.config.js`; do NOT adopt Tailwind 4's CSS-first config.
-- **Ports:** frontend dev server on **5173**, backend on **3001**. `client/vite.config.ts` must proxy `/api` → `http://localhost:3001`.
+- **Frontend dev server on port 5173. No backend port, no Vite proxy, no `/api` calls anywhere.**
+- **`server/` is an empty shell**: `server/package.json` (scripts only) + `server/src/index.ts` (a stub that does nothing but document intent). No Express, no routes, no database, no tests for it. This is a deliberate user requirement.
 - **UI copy is Chinese** (column names, buttons, empty states, labels).
-- **SQLite table names exactly:** `columns`, `tasks`, `pomodoro_sessions`, `daily_activities`, with columns exactly as the design spec (§4). `order` is a reserved-ish keyword — **always quote it as `"order"` in SQL**.
-- On startup, seed 4 default columns: 📋待办 / 🚀进行中 / 🔍待审核 / ✅已完成 (only when `columns` is empty). **Start with no other seed data.**
-- Enforce `PRAGMA foreign_keys = ON` so column deletion cascades tasks and task deletion cascades sessions.
-- Deleting a task removes its `pomodoro_sessions` but keeps `daily_activities` (stats history survives).
+- **All persistence is client-side** via a localStorage-backed `client/src/services/api.ts` under key `astra-db`. Its method signatures must match what the store calls (`getColumns`, `getTasks`, `createTask`, `updateTask`, `deleteTask`, `moveTask` is store-side, `startFocusSession`, `endFocusSession`, `getSessions`, `getDaily`, `getSummary`). Each method returns a Promise (may resolve immediately) so the store code is unchanged from an HTTP design.
+- On first load (no `astra-db` in localStorage), seed 4 default columns: 📋待办 / 🚀进行中 / 🔍待审核 / ✅已完成. **No other seed data.**
+- Deleting a task also removes its `pomodoro_sessions`; `daily_activities` statistics are always derived on-demand from completed sessions (never stored separately).
 - UI design tokens: background `#f5f5f7`, surface `#ffffff`, primary `#fa2d48`, sidebar `#1d1d1f`. Font stack: `SF Pro Display, SF Pro Text, -apple-system, PingFang SC, Microsoft YaHei, sans-serif`. Large radii (`rounded-full`, `rounded-2xl`, `rounded-[18px]`). Buttons `active:scale-95`; cards `hover:scale-1.02`. PlayerBar is a frosted-glass (`backdrop-blur`) floating pill fixed at bottom-center.
 
 ---
 
-### Task 1: Server scaffold + DB layer
+### Task 1: Project shell + client scaffold (Vite + Tailwind + Router)
 
 **Files:**
-- Create: `server/package.json`
-- Create: `server/tsconfig.json`
-- Create: `server/src/types.ts`
-- Create: `server/src/dates.ts`
-- Create: `server/src/db.ts`
-- Create: `server/test/db.test.ts`
-
-**Interfaces:**
-- Consumes: nothing.
-- Produces: `initDb(dbPath?: string): DB` and `getDb(): DB` where `DB = better-sqlite3.Database`; `localDate(d: Date): string` and `localDaysAgo(days: number): Date`. Routes in later tasks receive the `DB` instance as a constructor argument.
-
-- [ ] **Step 1: Write the failing test**
-
-`server/test/db.test.ts`:
-```ts
-import { describe, it, expect, beforeEach } from 'vitest';
-import { initDb, type DB } from '../src/db';
-
-let db: DB;
-beforeEach(() => { db = initDb(':memory:'); });
-
-describe('db init', () => {
-  it('creates all 4 tables', () => {
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
-    const names = tables.map(t => t.name);
-    expect(names).toContain('columns');
-    expect(names).toContain('tasks');
-    expect(names).toContain('pomodoro_sessions');
-    expect(names).toContain('daily_activities');
-  });
-
-  it('seeds 4 default columns in order', () => {
-    const rows = db.prepare('SELECT title, emoji, "order" FROM columns ORDER BY "order"').all() as { title: string; emoji: string; order: number }[];
-    expect(rows.map(r => r.title)).toEqual(['待办', '进行中', '待审核', '已完成']);
-    expect(rows[0].emoji).toBe('📋');
-  });
-
-  it('does not double-seed on second init', () => {
-    initDb(':memory:');
-    const count = db.prepare('SELECT COUNT(*) AS c FROM columns').get() as { c: number };
-    expect(count.c).toBe(4);
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd server && npx vitest run test/db.test.ts`
-Expected: FAIL with `Cannot find module '../src/db'`.
-
-- [ ] **Step 3: Create server package files**
-
-`server/package.json`:
-```json
-{
-  "name": "astra-server",
-  "private": true,
-  "version": "0.1.0",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "better-sqlite3": "^11.10.0",
-    "cors": "^2.8.5",
-    "express": "^4.21.2"
-  },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/node": "^22.10.0",
-    "@types/supertest": "^6.0.2",
-    "supertest": "^7.0.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vitest": "^2.1.0"
-  }
-}
-```
-
-`server/tsconfig.json`:
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "commonjs",
-    "moduleResolution": "node",
-    "lib": ["ES2022"],
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "types": ["node"]
-  },
-  "include": ["src"]
-}
-```
-
-- [ ] **Step 4: Create types, dates, and db modules**
-
-`server/src/types.ts`:
-```ts
-export interface Column {
-  id: number;
-  title: string;
-  order: number;
-  emoji: string;
-  accentColor: string;
-}
-
-export interface Task {
-  id: number;
-  title: string;
-  description: string;
-  columnId: number;
-  priority: 'high' | 'medium' | 'low';
-  pomodoroMinutes: number;
-  order: number;
-  dueDate: string | null;
-  completedAt: string | null;
-  createdAt: string;
-}
-
-export interface PomodoroSession {
-  id: number;
-  taskId: number | null;
-  taskTitle: string;
-  duration: number;
-  completed: boolean;
-  startedAt: string;
-  finishedAt: string | null;
-  mode: 'focus' | 'break' | 'free';
-}
-
-export interface DailyStat {
-  date: string; // YYYY-MM-DD local
-  minutes: number;
-}
-
-export interface Summary {
-  totalMinutes: number;
-  totalSessions: number;
-  streakDays: number;
-  todayMinutes: number;
-}
-```
-
-`server/src/dates.ts` (uses **local** timezone, never UTC — critical for Chinese users):
-```ts
-export function localDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** Returns a Date `days` days before today (today = 0). */
-export function localDaysAgo(days: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d;
-}
-```
-
-`server/src/db.ts`:
-```ts
-import Database from 'better-sqlite3';
-
-export type DB = Database.Database;
-
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS columns (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT NOT NULL,
-  "order" INTEGER NOT NULL DEFAULT 0,
-  emoji TEXT NOT NULL DEFAULT '📌',
-  accentColor TEXT NOT NULL DEFAULT '#fa2d48'
-);
-
-CREATE TABLE IF NOT EXISTS tasks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  columnId INTEGER NOT NULL REFERENCES columns(id) ON DELETE CASCADE,
-  priority TEXT NOT NULL DEFAULT 'medium',
-  pomodoroMinutes INTEGER NOT NULL DEFAULT 0,
-  "order" INTEGER NOT NULL DEFAULT 0,
-  dueDate TEXT,
-  completedAt TEXT,
-  createdAt TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS pomodoro_sessions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  taskId INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
-  taskTitle TEXT NOT NULL DEFAULT '',
-  duration INTEGER NOT NULL DEFAULT 0,
-  completed INTEGER NOT NULL DEFAULT 0,
-  startedAt TEXT NOT NULL,
-  finishedAt TEXT,
-  mode TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS daily_activities (
-  date TEXT PRIMARY KEY,
-  minutes INTEGER NOT NULL DEFAULT 0
-);
-`;
-
-const DEFAULT_COLUMNS = [
-  { title: '待办', emoji: '📋', accentColor: '#fa2d48' },
-  { title: '进行中', emoji: '🚀', accentColor: '#ff9500' },
-  { title: '待审核', emoji: '🔍', accentColor: '#5856d6' },
-  { title: '已完成', emoji: '✅', accentColor: '#34c759' },
-];
-
-let db: DB | null = null;
-
-export function initDb(dbPath: string = ':memory:'): DB {
-  db = new Database(dbPath);
-  db.pragma('foreign_keys = ON');
-  db.exec(SCHEMA);
-  const count = db.prepare('SELECT COUNT(*) AS c FROM columns').get() as { c: number };
-  if (count.c === 0) {
-    const insert = db.prepare('INSERT INTO columns (title, emoji, accentColor, "order") VALUES (?, ?, ?, ?)');
-    DEFAULT_COLUMNS.forEach((col, i) => insert.run(col.title, col.emoji, col.accentColor, i));
-  }
-  return db;
-}
-
-export function getDb(): DB {
-  if (!db) throw new Error('Database not initialized');
-  return db;
-}
-```
-
-- [ ] **Step 5: Install deps and run test to verify it passes**
-
-Run: `cd server && npm install && npx vitest run test/db.test.ts`
-Expected: PASS (3 tests).
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add server
-git commit -m "feat(server): scaffold server with sqlite schema, seed columns, dates util"
-```
-
----
-
-### Task 2: Express app factory + Columns API
-
-**Files:**
-- Create: `server/src/app.ts`
-- Create: `server/src/index.ts`
-- Create: `server/src/routes/columns.ts`
-- Create: `server/test/columns.test.ts`
-
-**Interfaces:**
-- Consumes: `initDb`, `DB` from `src/db`.
-- Produces: `createApp(db: DB): express.Express` — the full Express app with JSON + CORS middleware and all `/api/*` routers mounted (routers for tasks/focus/stats added in later tasks; mount them now, importing from their route files, which Task 3-5 create). `index.ts` boots the app on port 3001.
-- Produces route factory pattern used by all route files: `export function createColumnsRouter(db: DB): Router`.
-
-- [ ] **Step 1: Write the failing test**
-
-`server/test/columns.test.ts`:
-```ts
-import { describe, it, expect, beforeEach } from 'vitest';
-import { initDb, type DB } from '../src/db';
-import { createApp } from '../src/app';
-import request from 'supertest';
-
-let app: ReturnType<typeof createApp>;
-let db: DB;
-beforeEach(() => { db = initDb(':memory:'); app = createApp(db); });
-
-describe('GET /api/columns', () => {
-  it('returns the 4 default columns ordered', async () => {
-    const res = await request(app).get('/api/columns');
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(4);
-    expect(res.body[0]).toMatchObject({ title: '待办', emoji: '📋', order: 0 });
-    expect(res.body[3]).toMatchObject({ title: '已完成' });
-  });
-});
-
-describe('POST /api/columns', () => {
-  it('creates a column with defaults', async () => {
-    const res = await request(app).post('/api/columns').send({ title: '新列', emoji: '🎯' });
-    expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ title: '新列', emoji: '🎯', order: 4 });
-  });
-  it('rejects missing title with 400', async () => {
-    const res = await request(app).post('/api/columns').send({});
-    expect(res.status).toBe(400);
-  });
-});
-
-describe('PUT /api/columns/:id', () => {
-  it('renames and reorders a column', async () => {
-    const created = await request(app).post('/api/columns').send({ title: 'X' });
-    const res = await request(app).put(`/api/columns/${created.body.id}`).send({ title: 'Y', order: 0 });
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ title: 'Y', order: 0 });
-  });
-  it('404 for unknown id', async () => {
-    const res = await request(app).put('/api/columns/999').send({ title: 'Y' });
-    expect(res.status).toBe(404);
-  });
-});
-
-describe('DELETE /api/columns/:id', () => {
-  it('deletes the column and cascades its tasks via FK', async () => {
-    const cols = (await request(app).get('/api/columns')).body as { id: number }[];
-    // Insert a task directly into the DB — the tasks API arrives in Task 3.
-    db.prepare('INSERT INTO tasks (title, columnId, createdAt) VALUES (?, ?, ?)')
-      .run('T', cols[0].id, new Date().toISOString());
-    const res = await request(app).delete(`/api/columns/${cols[0].id}`);
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true });
-    const count = db.prepare('SELECT COUNT(*) AS c FROM tasks').get() as { c: number };
-    expect(count.c).toBe(0);
-  });
-  it('404 for unknown id', async () => {
-    const res = await request(app).delete('/api/columns/999');
-    expect(res.status).toBe(404);
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd server && npx vitest run test/columns.test.ts`
-Expected: FAIL — `Cannot find module '../src/app'` and tasks router missing.
-
-- [ ] **Step 3: Create app factory and index**
-
-`server/src/app.ts`:
-```ts
-import express from 'express';
-import cors from 'cors';
-import type { DB } from './db';
-import { createColumnsRouter } from './routes/columns';
-import { createTasksRouter } from './routes/tasks';
-import { createFocusRouter } from './routes/focus';
-import { createStatsRouter } from './routes/stats';
-
-export function createApp(db: DB): express.Express {
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
-  app.use('/api/columns', createColumnsRouter(db));
-  app.use('/api/tasks', createTasksRouter(db));
-  app.use('/api/focus', createFocusRouter(db));
-  app.use('/api/stats', createStatsRouter(db));
-  return app;
-}
-```
-
-`server/src/index.ts`:
-```ts
-import { initDb } from './db';
-import { createApp } from './app';
-
-const PORT = Number(process.env.PORT) || 3001;
-const db = initDb('astra.db');
-const app = createApp(db);
-
-app.listen(PORT, () => {
-  console.log(`Astra API listening on http://localhost:${PORT}`);
-});
-```
-
-- [ ] **Step 4: Create columns router**
-
-`server/src/routes/columns.ts`:
-```ts
-import { Router } from 'express';
-import type { DB } from '../db';
-
-export function createColumnsRouter(db: DB): Router {
-  const router = Router();
-
-  router.get('/', (_req, res) => {
-    const columns = db.prepare('SELECT * FROM columns ORDER BY "order" ASC').all();
-    res.json(columns);
-  });
-
-  router.post('/', (req, res) => {
-    const { title, emoji = '📌', accentColor = '#fa2d48' } = req.body ?? {};
-    if (!title || typeof title !== 'string') {
-      return res.status(400).json({ error: 'title is required' });
-    }
-    const max = db.prepare('SELECT COALESCE(MAX("order"), -1) AS m FROM columns').get() as { m: number };
-    const info = db
-      .prepare('INSERT INTO columns (title, emoji, accentColor, "order") VALUES (?, ?, ?, ?)')
-      .run(title, emoji, accentColor, max.m + 1);
-    res.status(201).json(db.prepare('SELECT * FROM columns WHERE id = ?').get(info.lastInsertRowid));
-  });
-
-  router.put('/:id', (req, res) => {
-    const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM columns WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Column not found' });
-    const { title, emoji, accentColor, order } = req.body ?? {};
-    db.prepare(
-      `UPDATE columns SET title = COALESCE(?, title), emoji = COALESCE(?, emoji),
-       accentColor = COALESCE(?, accentColor), "order" = COALESCE(?, "order") WHERE id = ?`
-    ).run(title ?? null, emoji ?? null, accentColor ?? null, order ?? null, id);
-    res.json(db.prepare('SELECT * FROM columns WHERE id = ?').get(id));
-  });
-
-  router.delete('/:id', (req, res) => {
-    const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM columns WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Column not found' });
-    db.prepare('DELETE FROM columns WHERE id = ?').run(id);
-    res.json({ ok: true });
-  });
-
-  return router;
-}
-```
-
-- [ ] **Step 5: Create placeholder routers for tasks/focus/stats**
-
-These are fully implemented in Tasks 3-5. For now create each file exporting a factory that returns an empty router, so `app.ts` compiles and the columns test runs:
-
-`server/src/routes/tasks.ts`:
-```ts
-import { Router } from 'express';
-import type { DB } from '../db';
-
-export function createTasksRouter(db: DB): Router {
-  const router = Router();
-  // Implemented in Task 3
-  return router;
-}
-```
-Do the same shape for `server/src/routes/focus.ts` and `server/src/routes/stats.ts` (they will be replaced in Tasks 4 and 5).
-
-- [ ] **Step 6: Run tests to verify they pass**
-
-Run: `cd server && npx vitest run test/columns.test.ts test/db.test.ts`
-Expected: PASS (all tests). The DELETE cascade test needs `foreign_keys = ON` — `initDb` already sets it.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add server/src server/test
-git commit -m "feat(server): express app factory and columns CRUD API"
-```
-
----
-
-### Task 3: Tasks API
-
-**Files:**
-- Modify: `server/src/routes/tasks.ts` (replace placeholder)
-- Create: `server/test/tasks.test.ts`
-
-**Interfaces:**
-- Consumes: `DB` from `src/db`.
-- Produces: `createTasksRouter(db)` with `GET /`, `POST /`, `PUT /:id`, `DELETE /:id`. `GET /` supports optional `?columnId=` filter. `PUT /:id` accepts partial fields including `{ columnId, order }` (used by drag-and-drop), and validates `columnId` if present.
-
-- [ ] **Step 1: Write the failing test**
-
-`server/test/tasks.test.ts`:
-```ts
-import { describe, it, expect, beforeEach } from 'vitest';
-import { initDb, type DB } from '../src/db';
-import { createApp } from '../src/app';
-import request from 'supertest';
-
-let app: ReturnType<typeof createApp>;
-let db: DB;
-let todoId: number;
-
-beforeEach(async () => {
-  db = initDb(':memory:');
-  app = createApp(db);
-  const cols = (await request(app).get('/api/columns')).body as { id: number; title: string }[];
-  todoId = cols[0].id;
-});
-
-describe('POST /api/tasks', () => {
-  it('creates a task with defaults', async () => {
-    const res = await request(app).post('/api/tasks').send({ title: '写周报', columnId: todoId });
-    expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ title: '写周报', columnId: todoId, priority: 'medium', pomodoroMinutes: 0, order: 0 });
-  });
-  it('rejects missing title', async () => {
-    const res = await request(app).post('/api/tasks').send({ columnId: todoId });
-    expect(res.status).toBe(400);
-  });
-  it('404 for unknown column', async () => {
-    const res = await request(app).post('/api/tasks').send({ title: 'T', columnId: 999 });
-    expect(res.status).toBe(404);
-  });
-});
-
-describe('GET /api/tasks', () => {
-  it('returns tasks ordered by "order"', async () => {
-    await request(app).post('/api/tasks').send({ title: 'A', columnId: todoId });
-    await request(app).post('/api/tasks').send({ title: 'B', columnId: todoId });
-    const res = await request(app).get('/api/tasks');
-    expect(res.status).toBe(200);
-    expect(res.body.map((t: { title: string }) => t.title)).toEqual(['A', 'B']);
-  });
-  it('filters by columnId', async () => {
-    const cols = (await request(app).get('/api/columns')).body as { id: number }[];
-    await request(app).post('/api/tasks').send({ title: 'A', columnId: todoId });
-    await request(app).post('/api/tasks').send({ title: 'B', columnId: cols[1].id });
-    const res = await request(app).get(`/api/tasks?columnId=${todoId}`);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].title).toBe('A');
-  });
-});
-
-describe('PUT /api/tasks/:id', () => {
-  it('updates fields and persists order for drag-drop', async () => {
-    const created = await request(app).post('/api/tasks').send({ title: 'A', columnId: todoId });
-    const res = await request(app).put(`/api/tasks/${created.body.id}`).send({ title: 'A2', priority: 'high', order: 5 });
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ title: 'A2', priority: 'high', order: 5 });
-  });
-  it('moves task to another column', async () => {
-    const cols = (await request(app).get('/api/columns')).body as { id: number }[];
-    const created = await request(app).post('/api/tasks').send({ title: 'A', columnId: todoId });
-    const res = await request(app).put(`/api/tasks/${created.body.id}`).send({ columnId: cols[1].id, order: 0 });
-    expect(res.status).toBe(200);
-    expect(res.body.columnId).toBe(cols[1].id);
-  });
-  it('404 for unknown task', async () => {
-    const res = await request(app).put('/api/tasks/999').send({ title: 'X' });
-    expect(res.status).toBe(404);
-  });
-});
-
-describe('DELETE /api/tasks/:id', () => {
-  it('deletes the task', async () => {
-    const created = await request(app).post('/api/tasks').send({ title: 'A', columnId: todoId });
-    const res = await request(app).delete(`/api/tasks/${created.body.id}`);
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true });
-    const tasks = await request(app).get('/api/tasks');
-    expect(tasks.body).toHaveLength(0);
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd server && npx vitest run test/tasks.test.ts`
-Expected: FAIL — routes are empty placeholders.
-
-- [ ] **Step 3: Implement the tasks router**
-
-Replace `server/src/routes/tasks.ts` with:
-```ts
-import { Router } from 'express';
-import type { DB } from '../db';
-
-export function createTasksRouter(db: DB): Router {
-  const router = Router();
-
-  router.get('/', (req, res) => {
-    const columnId = req.query.columnId ? Number(req.query.columnId) : undefined;
-    const rows = columnId
-      ? db.prepare('SELECT * FROM tasks WHERE columnId = ? ORDER BY "order" ASC').all(columnId)
-      : db.prepare('SELECT * FROM tasks ORDER BY "order" ASC').all();
-    res.json(rows);
-  });
-
-  router.post('/', (req, res) => {
-    const { title, description = '', columnId, priority = 'medium', dueDate = null } = req.body ?? {};
-    if (!title || typeof title !== 'string') return res.status(400).json({ error: 'title is required' });
-    if (!Number.isInteger(columnId)) return res.status(400).json({ error: 'columnId is required' });
-    const col = db.prepare('SELECT id FROM columns WHERE id = ?').get(columnId);
-    if (!col) return res.status(404).json({ error: 'Column not found' });
-    const max = db.prepare('SELECT COALESCE(MAX("order"), -1) AS m FROM tasks WHERE columnId = ?').get(columnId) as { m: number };
-    const createdAt = new Date().toISOString();
-    const info = db
-      .prepare('INSERT INTO tasks (title, description, columnId, priority, "order", dueDate, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(title, description, columnId, priority, max.m + 1, dueDate, createdAt);
-    res.status(201).json(db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid));
-  });
-
-  router.put('/:id', (req, res) => {
-    const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Task not found' });
-    const { title, description, columnId, priority, dueDate, order, completedAt, pomodoroMinutes } = req.body ?? {};
-    if (columnId != null && !Number.isInteger(columnId)) return res.status(400).json({ error: 'invalid columnId' });
-    if (columnId != null) {
-      const col = db.prepare('SELECT id FROM columns WHERE id = ?').get(columnId);
-      if (!col) return res.status(404).json({ error: 'Column not found' });
-    }
-    db.prepare(
-      `UPDATE tasks SET
-         title = COALESCE(?, title),
-         description = COALESCE(?, description),
-         columnId = COALESCE(?, columnId),
-         priority = COALESCE(?, priority),
-         dueDate = COALESCE(?, dueDate),
-         "order" = COALESCE(?, "order"),
-         completedAt = COALESCE(?, completedAt),
-         pomodoroMinutes = COALESCE(?, pomodoroMinutes)
-       WHERE id = ?`
-    ).run(title ?? null, description ?? null, columnId ?? null, priority ?? null, dueDate ?? null, order ?? null, completedAt ?? null, pomodoroMinutes ?? null, id);
-    res.json(db.prepare('SELECT * FROM tasks WHERE id = ?').get(id));
-  });
-
-  router.delete('/:id', (req, res) => {
-    const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Task not found' });
-    db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
-    res.json({ ok: true });
-  });
-
-  return router;
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd server && npx vitest run test/tasks.test.ts`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add server/src/routes/tasks.ts server/test/tasks.test.ts
-git commit -m "feat(server): tasks CRUD API with column filtering and drag-drop order updates"
-```
-
----
-
-### Task 4: Focus sessions API
-
-**Files:**
-- Modify: `server/src/routes/focus.ts` (replace placeholder)
-- Create: `server/test/focus.test.ts`
-
-**Interfaces:**
-- Consumes: `DB`, `localDate` from `src/dates`.
-- Produces: `createFocusRouter(db)` with:
-  - `POST /start` — body `{ mode, taskId?, taskTitle? }` → `201 { id, startedAt }`. Validates mode ∈ {focus, break, free}; resolves taskTitle from the task when `taskId` given; 404 if taskId points to missing task.
-  - `POST /end` — body `{ id, duration, completed }` → `{ ok: true }`. Sets duration/completed/finishedAt; if completed and duration>0, adds duration to the task's `pomodoroMinutes` and upserts `daily_activities` for the local date. 404 if session missing.
-  - `GET /sessions` — latest 50 sessions, `completed` converted to boolean, ordered by `startedAt DESC`.
-
-- [ ] **Step 1: Write the failing test**
-
-`server/test/focus.test.ts`:
-```ts
-import { describe, it, expect, beforeEach } from 'vitest';
-import { initDb, type DB } from '../src/db';
-import { createApp } from '../src/app';
-import request from 'supertest';
-
-let app: ReturnType<typeof createApp>;
-let db: DB;
-
-beforeEach(async () => {
-  db = initDb(':memory:');
-  app = createApp(db);
-});
-
-describe('POST /api/focus/start', () => {
-  it('starts a session and resolves taskTitle from task', async () => {
-    const cols = (await request(app).get('/api/columns')).body as { id: number }[];
-    const task = await request(app).post('/api/tasks').send({ title: '读书', columnId: cols[0].id });
-    const res = await request(app).post('/api/focus/start').send({ mode: 'focus', taskId: task.body.id });
-    expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ id: res.body.id });
-    expect(typeof res.body.startedAt).toBe('string');
-  });
-  it('rejects invalid mode', async () => {
-    const res = await request(app).post('/api/focus/start').send({ mode: 'sprint' });
-    expect(res.status).toBe(400);
-  });
-  it('404 when task does not exist', async () => {
-    const res = await request(app).post('/api/focus/start').send({ mode: 'focus', taskId: 999 });
-    expect(res.status).toBe(404);
-  });
-});
-
-describe('POST /api/focus/end', () => {
-  it('records session and accumulates task pomodoroMinutes', async () => {
-    const cols = (await request(app).get('/api/columns')).body as { id: number }[];
-    const task = await request(app).post('/api/tasks').send({ title: '读书', columnId: cols[0].id });
-    const started = await request(app).post('/api/focus/start').send({ mode: 'focus', taskId: task.body.id });
-    const res = await request(app).post('/api/focus/end').send({ id: started.body.id, duration: 25, completed: true });
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true });
-    const updated = await request(app).get(`/api/tasks`).then(r => r.body.find((t: { id: number }) => t.id === task.body.id));
-    expect(updated.pomodoroMinutes).toBe(25);
-  });
-
-  it('adds to daily_activities for completed sessions', async () => {
-    const started = await request(app).post('/api/focus/start').send({ mode: 'free' });
-    await request(app).post('/api/focus/end').send({ id: started.body.id, duration: 30, completed: true });
-    // Assert the side effect directly in the DB — the stats API arrives in Task 5.
-    const row = db.prepare('SELECT minutes FROM daily_activities').get() as { minutes: number };
-    expect(row.minutes).toBe(30);
-  });
-
-  it('does not accumulate when aborted (completed=false)', async () => {
-    const cols = (await request(app).get('/api/columns')).body as { id: number }[];
-    const task = await request(app).post('/api/tasks').send({ title: '读书', columnId: cols[0].id });
-    const started = await request(app).post('/api/focus/start').send({ mode: 'focus', taskId: task.body.id });
-    await request(app).post('/api/focus/end').send({ id: started.body.id, duration: 5, completed: false });
-    const updated = await request(app).get('/api/tasks').then(r => r.body.find((t: { id: number }) => t.id === task.body.id));
-    expect(updated.pomodoroMinutes).toBe(0);
-  });
-});
-
-describe('GET /api/focus/sessions', () => {
-  it('returns sessions newest first with boolean completed', async () => {
-    const s1 = await request(app).post('/api/focus/start').send({ mode: 'focus' });
-    await request(app).post('/api/focus/end').send({ id: s1.body.id, duration: 10, completed: true });
-    const s2 = await request(app).post('/api/focus/start').send({ mode: 'break' });
-    const res = await request(app).get('/api/focus/sessions');
-    expect(res.status).toBe(200);
-    expect(res.body[0]).toMatchObject({ id: s2.body.id, completed: false });
-    expect(res.body[1]).toMatchObject({ id: s1.body.id, completed: true });
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd server && npx vitest run test/focus.test.ts`
-Expected: FAIL — empty router.
-
-- [ ] **Step 3: Implement the focus router**
-
-Replace `server/src/routes/focus.ts` with:
-```ts
-import { Router } from 'express';
-import type { DB } from '../db';
-import { localDate } from '../dates';
-
-const MODES = ['focus', 'break', 'free'] as const;
-
-export function createFocusRouter(db: DB): Router {
-  const router = Router();
-
-  router.post('/start', (req, res) => {
-    const { mode = 'focus', taskId = null, taskTitle = '' } = req.body ?? {};
-    if (!MODES.includes(mode)) return res.status(400).json({ error: 'invalid mode' });
-    let title = typeof taskTitle === 'string' ? taskTitle : '';
-    if (taskId != null) {
-      const task = db.prepare('SELECT title FROM tasks WHERE id = ?').get(taskId) as { title: string } | undefined;
-      if (!task) return res.status(404).json({ error: 'Task not found' });
-      title = task.title;
-    }
-    const startedAt = new Date().toISOString();
-    const info = db
-      .prepare('INSERT INTO pomodoro_sessions (taskId, taskTitle, duration, completed, startedAt, mode) VALUES (?, ?, 0, 0, ?, ?)')
-      .run(taskId ?? null, title, startedAt, mode);
-    res.status(201).json({ id: Number(info.lastInsertRowid), startedAt });
-  });
-
-  router.post('/end', (req, res) => {
-    const { id, duration = 0, completed = false } = req.body ?? {};
-    const session = db.prepare('SELECT * FROM pomodoro_sessions WHERE id = ?').get(id) as
-      | { id: number; taskId: number | null }
-      | undefined;
-    if (!session) return res.status(404).json({ error: 'Session not found' });
-    const finishedAt = new Date().toISOString();
-    db.prepare('UPDATE pomodoro_sessions SET duration = ?, completed = ?, finishedAt = ? WHERE id = ?')
-      .run(duration, completed ? 1 : 0, finishedAt, id);
-    if (completed && duration > 0) {
-      if (session.taskId != null) {
-        db.prepare('UPDATE tasks SET pomodoroMinutes = pomodoroMinutes + ? WHERE id = ?').run(duration, session.taskId);
-      }
-      const date = localDate(new Date());
-      db.prepare(
-        `INSERT INTO daily_activities (date, minutes) VALUES (?, ?)
-         ON CONFLICT(date) DO UPDATE SET minutes = minutes + ?`
-      ).run(date, duration, duration);
-    }
-    res.json({ ok: true });
-  });
-
-  router.get('/sessions', (_req, res) => {
-    const rows = db.prepare('SELECT * FROM pomodoro_sessions ORDER BY startedAt DESC LIMIT 50').all() as {
-      id: number; taskId: number | null; taskTitle: string; duration: number; completed: number;
-      startedAt: string; finishedAt: string | null; mode: string;
-    }[];
-    res.json(rows.map(r => ({ ...r, completed: !!r.completed })));
-  });
-
-  return router;
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd server && npx vitest run test/focus.test.ts`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add server/src/routes/focus.ts server/test/focus.test.ts
-git commit -m "feat(server): focus session start/end API with task minutes accumulation"
-```
-
----
-
-### Task 5: Stats API
-
-**Files:**
-- Modify: `server/src/routes/stats.ts` (replace placeholder)
-- Create: `server/test/stats.test.ts`
-
-**Interfaces:**
-- Consumes: `DB`, `localDate`, `localDaysAgo`.
-- Produces: `createStatsRouter(db)` with:
-  - `GET /daily?days=30` → `DailyStat[]` — exactly `days` entries (default 30, clamped 1..90), each `{ date: 'YYYY-MM-DD', minutes: number }`, oldest first, missing days as 0.
-  - `GET /summary` → `{ totalMinutes, totalSessions, streakDays, todayMinutes }`. `totalMinutes`/`totalSessions` count only completed sessions. `streakDays`: consecutive days ending today (or yesterday if today has 0) where `daily_activities.minutes > 0`. `todayMinutes` from `daily_activities`.
-
-- [ ] **Step 1: Write the failing test**
-
-`server/test/stats.test.ts`:
-```ts
-import { describe, it, expect, beforeEach } from 'vitest';
-import { initDb, type DB } from '../src/db';
-import { createApp } from '../src/app';
-import request from 'supertest';
-
-let app: ReturnType<typeof createApp>;
-let db: DB;
-
-beforeEach(async () => {
-  db = initDb(':memory:');
-  app = createApp(db);
-});
-
-async function addCompletedSession(duration: number) {
-  const started = await request(app).post('/api/focus/start').send({ mode: 'free' });
-  await request(app).post('/api/focus/end').send({ id: started.body.id, duration, completed: true });
-}
-
-describe('GET /api/stats/daily', () => {
-  it('returns days entries oldest-first, zero for empty days', async () => {
-    await addCompletedSession(30);
-    const res = await request(app).get('/api/stats/daily?days=7');
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(7);
-    expect(res.body[res.body.length - 1].minutes).toBe(30);
-    expect(res.body[0].minutes).toBe(0);
-  });
-  it('clamps days to 90', async () => {
-    const res = await request(app).get('/api/stats/daily?days=500');
-    expect(res.body).toHaveLength(90);
-  });
-  it('defaults to 30 days', async () => {
-    const res = await request(app).get('/api/stats/daily');
-    expect(res.body).toHaveLength(30);
-  });
-});
-
-describe('GET /api/stats/summary', () => {
-  it('returns zeroed summary for empty db', async () => {
-    const res = await request(app).get('/api/stats/summary');
-    expect(res.body).toEqual({ totalMinutes: 0, totalSessions: 0, streakDays: 0, todayMinutes: 0 });
-  });
-  it('totals completed sessions only', async () => {
-    await addCompletedSession(25);
-    await addCompletedSession(25);
-    const s = await request(app).post('/api/focus/start').send({ mode: 'free' });
-    await request(app).post('/api/focus/end').send({ id: s.body.id, duration: 10, completed: false });
-    const res = await request(app).get('/api/stats/summary');
-    expect(res.body.totalMinutes).toBe(50);
-    expect(res.body.totalSessions).toBe(2);
-    expect(res.body.todayMinutes).toBe(50);
-    expect(res.body.streakDays).toBeGreaterThanOrEqual(1);
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd server && npx vitest run test/stats.test.ts`
-Expected: FAIL — empty router.
-
-- [ ] **Step 3: Implement the stats router**
-
-Replace `server/src/routes/stats.ts` with:
-```ts
-import { Router } from 'express';
-import type { DB } from '../db';
-import { localDate, localDaysAgo } from '../dates';
-
-export function createStatsRouter(db: DB): Router {
-  const router = Router();
-
-  router.get('/daily', (req, res) => {
-    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 90);
-    const rows = db.prepare('SELECT date, minutes FROM daily_activities').all() as { date: string; minutes: number }[];
-    const byDate = new Map(rows.map(r => [r.date, r.minutes]));
-    const result: { date: string; minutes: number }[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const key = localDate(localDaysAgo(i));
-      result.push({ date: key, minutes: byDate.get(key) ?? 0 });
-    }
-    res.json(result);
-  });
-
-  router.get('/summary', (_req, res) => {
-    const totals = db
-      .prepare('SELECT COALESCE(SUM(duration), 0) AS totalMinutes, COUNT(*) AS totalSessions FROM pomodoro_sessions WHERE completed = 1')
-      .get() as { totalMinutes: number; totalSessions: number };
-    const today = localDate(new Date());
-    const todayRow = db.prepare('SELECT minutes FROM daily_activities WHERE date = ?').get(today) as
-      | { minutes: number }
-      | undefined;
-    const todayMinutes = todayRow?.minutes ?? 0;
-    const positiveDays = new Set(
-      (db.prepare('SELECT date FROM daily_activities WHERE minutes > 0').all() as { date: string }[]).map(r => r.date)
-    );
-    let streak = 0;
-    let cursor = new Date();
-    if (!positiveDays.has(localDate(cursor))) cursor.setDate(cursor.getDate() - 1); // today empty → count from yesterday
-    while (positiveDays.has(localDate(cursor))) {
-      streak++;
-      cursor.setDate(cursor.getDate() - 1);
-    }
-    res.json({
-      totalMinutes: totals.totalMinutes,
-      totalSessions: totals.totalSessions,
-      streakDays: streak,
-      todayMinutes,
-    });
-  });
-
-  return router;
-}
-```
-
-- [ ] **Step 4: Run the full server test suite**
-
-Run: `cd server && npx vitest run`
-Expected: PASS — all 5 test files (db, columns, tasks, focus, stats) green.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add server/src/routes/stats.ts server/test/stats.test.ts
-git commit -m "feat(server): stats daily aggregation and summary API"
-```
-
----
-
-### Task 6: Client scaffold (Vite + Tailwind + Router shell)
-
-**Files:**
-- Create: `package.json` (root, with concurrently)
+- Create: `package.json` (root)
+- Create: `server/package.json` (empty shell)
+- Create: `server/src/index.ts` (empty shell stub)
 - Create: `client/package.json`
 - Create: `client/tsconfig.json`
 - Create: `client/tsconfig.node.json`
@@ -1008,7 +44,7 @@ git commit -m "feat(server): stats daily aggregation and summary API"
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: App shell with React Router (`/`, `/focus`, `/stats` routes), the global sidebar + content + PlayerBar layout, and design tokens in Tailwind + CSS. Later tasks fill in the pages and components (create `pages/KanbanPage.tsx`, `pages/FocusPage.tsx`, `pages/StatsPage.tsx` as minimal stubs now so routing compiles).
+- Produces: root scripts (`dev`/`test`), an empty-shell `server/`, and the App shell with React Router (`/`, `/focus`, `/stats` routes), global layout (Sidebar + main + PlayerBar), and design tokens in Tailwind + CSS. Later tasks fill in pages/components — create minimal stubs for `components/Sidebar.tsx`, `components/PlayerBar.tsx`, `pages/KanbanPage.tsx`, `pages/FocusPage.tsx`, `pages/StatsPage.tsx` now so routing compiles.
 
 - [ ] **Step 1: Write the failing smoke test**
 
@@ -1021,7 +57,7 @@ import App from './App';
 
 // NOTE: At this task the pages/Sidebar/PlayerBar are stubs and App does not
 // touch the store yet, so no mocking is needed. Sidebar labels are asserted
-// once Sidebar is implemented in Task 8.
+// once Sidebar is implemented.
 
 describe('App shell', () => {
   it('renders a main content region', () => {
@@ -1041,7 +77,7 @@ Run: `cd client && npm install && npx vitest run src/App.test.tsx`
 (If `client` deps are not yet installed, run `npm install` first.)
 Expected: FAIL — App module missing.
 
-- [ ] **Step 3: Create root and client package files**
+- [ ] **Step 3: Create root package.json and server shell**
 
 Root `package.json`:
 ```json
@@ -1050,16 +86,35 @@ Root `package.json`:
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
-    "server": "npm run dev --prefix server",
+    "dev": "npm run dev --prefix client",
     "client": "npm run dev --prefix client",
-    "test": "npm run test --prefix server && npm run test --prefix client"
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.0"
+    "test": "npm run test --prefix client"
   }
 }
 ```
+
+`server/package.json` (empty shell — no dependencies, no implementation):
+```json
+{
+  "name": "astra-server",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Empty shell. API intentionally not implemented — Astra runs frontend-only and persists data in browser localStorage.",
+  "scripts": {
+    "dev": "echo 'Astra server is an empty shell. Run the client instead: npm run dev at the repo root.'"
+  }
+}
+```
+
+`server/src/index.ts` (stub — do not expand without the user's request):
+```ts
+// Astra server — intentionally an empty shell.
+// The app runs frontend-only: the client persists data in localStorage
+// under the key "astra-db" through client/src/services/api.ts.
+export {};
+```
+
+- [ ] **Step 4: Create client package files**
 
 `client/package.json`:
 ```json
@@ -1148,9 +203,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: {
-      '/api': 'http://localhost:3001',
-    },
   },
 });
 ```
@@ -1174,7 +226,7 @@ export default defineConfig({
 import '@testing-library/jest-dom';
 ```
 
-- [ ] **Step 4: Create Tailwind + PostCSS + HTML**
+- [ ] **Step 5: Create Tailwind + PostCSS + HTML**
 
 `client/tailwind.config.js`:
 ```js
@@ -1223,7 +275,7 @@ export default {
 </html>
 ```
 
-- [ ] **Step 5: Create global CSS with design tokens**
+- [ ] **Step 6: Create global CSS with design tokens**
 
 `client/src/index.css`:
 ```css
@@ -1248,7 +300,7 @@ export default {
 }
 ```
 
-- [ ] **Step 6: Create main entry, App shell, and page stubs**
+- [ ] **Step 7: Create main entry, App shell, and page stubs**
 
 `client/src/main.tsx`:
 ```tsx
@@ -1293,14 +345,14 @@ export default function App() {
 }
 ```
 
-Create minimal stubs so the shell compiles (each replaced in Tasks 8-13):
+Create minimal stubs so the shell compiles (each replaced in later tasks):
 - `client/src/components/Sidebar.tsx` → `export default function Sidebar() { return <aside>Sidebar</aside>; }`
 - `client/src/components/PlayerBar.tsx` → `export default function PlayerBar() { return <div />; }`
 - `client/src/pages/KanbanPage.tsx` → `export default function KanbanPage() { return <div />; }`
 - `client/src/pages/FocusPage.tsx` → `export default function FocusPage() { return <div />; }`
 - `client/src/pages/StatsPage.tsx` → `export default function StatsPage() { return <div />; }`
 
-- [ ] **Step 7: Install deps and verify test + build pass**
+- [ ] **Step 8: Install deps and verify test + typecheck pass**
 
 Run: `cd client && npm install && npx vitest run src/App.test.tsx`
 Expected: PASS (smoke test).
@@ -1308,36 +360,379 @@ Expected: PASS (smoke test).
 Run: `cd client && npx tsc --noEmit`
 Expected: no type errors.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add package.json client
-git commit -m "feat(client): scaffold vite react ts tailwind with router shell and smoke test"
+git add package.json server client
+git commit -m "feat(client): scaffold vite react ts tailwind with router shell and empty server shell"
 ```
 
 ---
 
-### Task 7: Client data layer (types + API + Zustand store)
+### Task 2: Client data layer (types + localStorage api + Zustand store)
 
 **Files:**
 - Create: `client/src/types/index.ts`
 - Create: `client/src/services/api.ts`
+- Create: `client/src/services/__tests__/api.test.ts`
 - Create: `client/src/store/index.ts`
 - Create: `client/src/store/__tests__/store.test.ts`
 
 **Interfaces:**
-- Consumes: server API shapes from the spec.
+- Consumes: the store's expected API method signatures (below).
 - Produces:
-  - `types/index.ts` exporting `Column`, `Task`, `PomodoroSession`, `DailyStat`, `Summary` (mirror server `types.ts`).
-  - `services/api.ts` exporting `api` object with methods: `getColumns`, `createColumn`, `updateColumn`, `deleteColumn`, `getTasks`, `createTask`, `updateTask`, `deleteTask`, `startFocusSession(mode, taskId?)`, `endFocusSession(id, duration, completed)`, `getSessions`, `getDaily(days)`, `getSummary`.
-  - `store/index.ts` exporting `useStore` (a zustand store) and `initialStore` (for test resets). See full shape below.
+  - `types/index.ts` exporting `Column`, `Task`, `PomodoroSession`, `DailyStat`, `Summary`.
+  - `services/api.ts` exporting `api` — a **localStorage-backed mock** (no network). Methods: `getColumns`, `createColumn`, `updateColumn`, `deleteColumn`, `getTasks(columnId?)`, `createTask`, `updateTask`, `deleteTask`, `startFocusSession(mode, taskId?)`, `endFocusSession(id, duration, completed)`, `getSessions`, `getDaily(days)`, `getSummary`. Every method returns a Promise. Storage key `astra-db`.
+  - `store/index.ts` exporting `useStore` (zustand) and `initialStore` (test reset). Same store shape as the design spec (columns/tasks/sessions/daily/summary + timer state machine + CRUD + moveTaskToIndex).
 
-- [ ] **Step 1: Write the failing store test**
+- [ ] **Step 1: Write the failing api test**
+
+`client/src/services/__tests__/api.test.ts`:
+```ts
+import { describe, it, expect, beforeEach } from 'vitest';
+import { api } from '../api';
+
+beforeEach(() => {
+  localStorage.clear();
+});
+
+describe('localStorage api', () => {
+  it('seeds 4 default columns on first access', async () => {
+    const columns = await api.getColumns();
+    expect(columns.map((c) => c.title)).toEqual(['待办', '进行中', '待审核', '已完成']);
+  });
+
+  it('creates a task and persists it', async () => {
+    const columns = await api.getColumns();
+    const task = await api.createTask({ title: '写周报', columnId: columns[0].id, priority: 'high' });
+    expect(task.id).toBeTruthy();
+    expect(task.priority).toBe('high');
+    const tasks = await api.getTasks();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe('写周报');
+  });
+
+  it('endFocusSession accumulates minutes onto the task', async () => {
+    const columns = await api.getColumns();
+    const task = await api.createTask({ title: '读书', columnId: columns[0].id });
+    const started = await api.startFocusSession('focus', task.id);
+    await api.endFocusSession(started.id, 25, true);
+    const tasks = await api.getTasks();
+    expect(tasks[0].pomodoroMinutes).toBe(25);
+  });
+
+  it('getDaily and getSummary reflect completed sessions', async () => {
+    const started = await api.startFocusSession('free', null);
+    await api.endFocusSession(started.id, 30, true);
+    const daily = await api.getDaily(1);
+    expect(daily).toHaveLength(1);
+    expect(daily[0].minutes).toBe(30);
+    const summary = await api.getSummary();
+    expect(summary.totalMinutes).toBe(30);
+    expect(summary.totalSessions).toBe(1);
+    expect(summary.todayMinutes).toBe(30);
+    expect(summary.streakDays).toBeGreaterThanOrEqual(1);
+  });
+
+  it('deleteTask removes the task and its sessions', async () => {
+    const columns = await api.getColumns();
+    const task = await api.createTask({ title: 'A', columnId: columns[0].id });
+    const started = await api.startFocusSession('focus', task.id);
+    await api.endFocusSession(started.id, 10, true);
+    await api.deleteTask(task.id);
+    const sessions = await api.getSessions();
+    expect(sessions).toHaveLength(0);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd client && npx vitest run src/services/__tests__/api.test.ts`
+Expected: FAIL — api module missing.
+
+- [ ] **Step 3: Create client types**
+
+`client/src/types/index.ts`:
+```ts
+export interface Column {
+  id: number;
+  title: string;
+  order: number;
+  emoji: string;
+  accentColor: string;
+}
+
+export interface Task {
+  id: number;
+  title: string;
+  description: string;
+  columnId: number;
+  priority: 'high' | 'medium' | 'low';
+  pomodoroMinutes: number;
+  order: number;
+  dueDate: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export interface PomodoroSession {
+  id: number;
+  taskId: number | null;
+  taskTitle: string;
+  duration: number;
+  completed: boolean;
+  startedAt: string;
+  finishedAt: string | null;
+  mode: 'focus' | 'break' | 'free';
+}
+
+export interface DailyStat {
+  date: string;
+  minutes: number;
+}
+
+export interface Summary {
+  totalMinutes: number;
+  totalSessions: number;
+  streakDays: number;
+  todayMinutes: number;
+}
+```
+
+- [ ] **Step 4: Create the localStorage-backed api service**
+
+`client/src/services/api.ts`:
+```ts
+import type { Column, Task, PomodoroSession, DailyStat, Summary } from '../types';
+
+// Frontend-only persistence layer. The server is an empty shell, so this
+// module backs the store with localStorage under a single key. Every method
+// returns a Promise so the store code is identical to an HTTP design.
+
+const DB_KEY = 'astra-db';
+
+export interface LocalDB {
+  columns: Column[];
+  tasks: Task[];
+  sessions: PomodoroSession[];
+  seq: number;
+}
+
+const DEFAULT_COLUMNS: Column[] = [
+  { id: 1, title: '待办', order: 0, emoji: '📋', accentColor: '#fa2d48' },
+  { id: 2, title: '进行中', order: 1, emoji: '🚀', accentColor: '#ff9500' },
+  { id: 3, title: '待审核', order: 2, emoji: '🔍', accentColor: '#5856d6' },
+  { id: 4, title: '已完成', order: 3, emoji: '✅', accentColor: '#34c759' },
+];
+
+function emptyDB(): LocalDB {
+  return { columns: DEFAULT_COLUMNS, tasks: [], sessions: [], seq: 100 };
+}
+
+function loadDB(): LocalDB {
+  try {
+    const raw = localStorage.getItem(DB_KEY);
+    if (!raw) return emptyDB();
+    const parsed = JSON.parse(raw) as Partial<LocalDB>;
+    return {
+      columns: parsed.columns && parsed.columns.length > 0 ? parsed.columns : DEFAULT_COLUMNS,
+      tasks: parsed.tasks ?? [],
+      sessions: parsed.sessions ?? [],
+      seq: typeof parsed.seq === 'number' ? parsed.seq : 100,
+    };
+  } catch {
+    return emptyDB();
+  }
+}
+
+function saveDB(db: LocalDB) {
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+}
+
+function nextId(db: LocalDB): number {
+  db.seq += 1;
+  return db.seq;
+}
+
+function localDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+async function resolve<T>(value: T): Promise<T> {
+  return value;
+}
+
+export const api = {
+  getColumns: async (): Promise<Column[]> => {
+    const db = loadDB();
+    return resolve([...db.columns].sort((a, b) => a.order - b.order));
+  },
+
+  createColumn: async (data: { title: string; emoji?: string; accentColor?: string }): Promise<Column> => {
+    const db = loadDB();
+    const column: Column = {
+      id: nextId(db),
+      title: data.title,
+      order: db.columns.length,
+      emoji: data.emoji ?? '📌',
+      accentColor: data.accentColor ?? '#fa2d48',
+    };
+    db.columns.push(column);
+    saveDB(db);
+    return resolve(column);
+  },
+
+  updateColumn: async (id: number, data: Partial<Column>): Promise<Column> => {
+    const db = loadDB();
+    const column = db.columns.find((c) => c.id === id);
+    if (!column) throw new Error('Column not found');
+    Object.assign(column, data);
+    saveDB(db);
+    return resolve(column);
+  },
+
+  deleteColumn: async (id: number): Promise<{ ok: boolean }> => {
+    const db = loadDB();
+    db.columns = db.columns.filter((c) => c.id !== id);
+    db.tasks = db.tasks.filter((t) => t.columnId !== id);
+    saveDB(db);
+    return resolve({ ok: true });
+  },
+
+  getTasks: async (columnId?: number): Promise<Task[]> => {
+    const db = loadDB();
+    const rows = columnId != null ? db.tasks.filter((t) => t.columnId === columnId) : db.tasks;
+    return resolve([...rows].sort((a, b) => a.order - b.order));
+  },
+
+  createTask: async (data: Partial<Task>): Promise<Task> => {
+    const db = loadDB();
+    const columnId = data.columnId ?? db.columns[0]?.id;
+    if (columnId == null) throw new Error('columnId is required');
+    const maxOrder = db.tasks.filter((t) => t.columnId === columnId).reduce((m, t) => Math.max(m, t.order), -1);
+    const task: Task = {
+      id: nextId(db),
+      title: data.title ?? '',
+      description: data.description ?? '',
+      columnId,
+      priority: data.priority ?? 'medium',
+      pomodoroMinutes: 0,
+      order: maxOrder + 1,
+      dueDate: data.dueDate ?? null,
+      completedAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    db.tasks.push(task);
+    saveDB(db);
+    return resolve(task);
+  },
+
+  updateTask: async (id: number, data: Partial<Task>): Promise<Task> => {
+    const db = loadDB();
+    const task = db.tasks.find((t) => t.id === id);
+    if (!task) throw new Error('Task not found');
+    Object.assign(task, data);
+    saveDB(db);
+    return resolve({ ...task });
+  },
+
+  deleteTask: async (id: number): Promise<{ ok: boolean }> => {
+    const db = loadDB();
+    db.tasks = db.tasks.filter((t) => t.id !== id);
+    db.sessions = db.sessions.filter((s) => s.taskId !== id);
+    saveDB(db);
+    return resolve({ ok: true });
+  },
+
+  startFocusSession: async (mode: string, taskId?: number | null): Promise<{ id: number; startedAt: string }> => {
+    const db = loadDB();
+    const task = taskId != null ? db.tasks.find((t) => t.id === taskId) : undefined;
+    const session: PomodoroSession = {
+      id: nextId(db),
+      taskId: taskId ?? null,
+      taskTitle: task?.title ?? '',
+      duration: 0,
+      completed: false,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      mode: (['focus', 'break', 'free'].includes(mode) ? mode : 'focus') as PomodoroSession['mode'],
+    };
+    db.sessions.unshift(session);
+    saveDB(db);
+    return resolve({ id: session.id, startedAt: session.startedAt });
+  },
+
+  endFocusSession: async (id: number, duration: number, completed: boolean): Promise<{ ok: boolean }> => {
+    const db = loadDB();
+    const session = db.sessions.find((s) => s.id === id);
+    if (!session) throw new Error('Session not found');
+    session.duration = duration;
+    session.completed = completed;
+    session.finishedAt = new Date().toISOString();
+    if (completed && duration > 0 && session.taskId != null) {
+      const task = db.tasks.find((t) => t.id === session.taskId);
+      if (task) task.pomodoroMinutes += duration;
+    }
+    saveDB(db);
+    return resolve({ ok: true });
+  },
+
+  getSessions: async (): Promise<PomodoroSession[]> => {
+    const db = loadDB();
+    return resolve([...db.sessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt)));
+  },
+
+  getDaily: async (days = 30): Promise<DailyStat[]> => {
+    const db = loadDB();
+    const byDate = new Map<string, number>();
+    for (const s of db.sessions) {
+      if (!s.completed) continue;
+      const key = localDate(new Date(s.startedAt));
+      byDate.set(key, (byDate.get(key) ?? 0) + s.duration);
+    }
+    const result: DailyStat[] = [];
+    const today = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const key = localDate(d);
+      result.push({ date: key, minutes: byDate.get(key) ?? 0 });
+    }
+    return resolve(result);
+  },
+
+  getSummary: async (): Promise<Summary> => {
+    const db = loadDB();
+    const completed = db.sessions.filter((s) => s.completed);
+    const totalMinutes = completed.reduce((sum, s) => sum + s.duration, 0);
+    const positiveDays = new Set<string>();
+    for (const s of completed) {
+      if (s.duration > 0) positiveDays.add(localDate(new Date(s.startedAt)));
+    }
+    const today = localDate(new Date());
+    const todayMinutes = completed.filter((s) => localDate(new Date(s.startedAt)) === today).reduce((sum, s) => sum + s.duration, 0);
+    let streak = 0;
+    const cursor = new Date();
+    if (!positiveDays.has(localDate(cursor))) cursor.setDate(cursor.getDate() - 1);
+    while (positiveDays.has(localDate(cursor))) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return resolve({ totalMinutes, totalSessions: completed.length, streakDays: streak, todayMinutes });
+  },
+};
+```
+
+- [ ] **Step 5: Write the failing store test**
 
 `client/src/store/__tests__/store.test.ts`:
 ```ts
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useStore, initialStore, MODE_MINUTES } from '../index';
+import { useStore, initialStore } from '../index';
 import { api } from '../../services/api';
 
 vi.mock('../../services/api', () => ({
@@ -1439,111 +834,12 @@ describe('moveTaskToIndex', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 6: Run test to verify it fails**
 
 Run: `cd client && npx vitest run src/store/__tests__/store.test.ts`
-Expected: FAIL — modules missing.
+Expected: FAIL — store module missing.
 
-- [ ] **Step 3: Create client types**
-
-`client/src/types/index.ts`:
-```ts
-export interface Column {
-  id: number;
-  title: string;
-  order: number;
-  emoji: string;
-  accentColor: string;
-}
-
-export interface Task {
-  id: number;
-  title: string;
-  description: string;
-  columnId: number;
-  priority: 'high' | 'medium' | 'low';
-  pomodoroMinutes: number;
-  order: number;
-  dueDate: string | null;
-  completedAt: string | null;
-  createdAt: string;
-}
-
-export interface PomodoroSession {
-  id: number;
-  taskId: number | null;
-  taskTitle: string;
-  duration: number;
-  completed: boolean;
-  startedAt: string;
-  finishedAt: string | null;
-  mode: 'focus' | 'break' | 'free';
-}
-
-export interface DailyStat {
-  date: string;
-  minutes: number;
-}
-
-export interface Summary {
-  totalMinutes: number;
-  totalSessions: number;
-  streakDays: number;
-  todayMinutes: number;
-}
-```
-
-- [ ] **Step 4: Create the API service**
-
-`client/src/services/api.ts`:
-```ts
-import type { Column, Task, PomodoroSession, DailyStat, Summary } from '../types';
-
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.error ?? `Request failed: ${res.status}`);
-  }
-  return res.json() as Promise<T>;
-}
-
-export const api = {
-  getColumns: () => request<Column[]>('/columns'),
-  createColumn: (data: { title: string; emoji?: string; accentColor?: string }) =>
-    request<Column>('/columns', { method: 'POST', body: JSON.stringify(data) }),
-  updateColumn: (id: number, data: Partial<Column>) =>
-    request<Column>(`/columns/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteColumn: (id: number) => request<{ ok: boolean }>(`/columns/${id}`, { method: 'DELETE' }),
-
-  getTasks: (columnId?: number) =>
-    request<Task[]>(`/tasks${columnId != null ? `?columnId=${columnId}` : ''}`),
-  createTask: (data: Partial<Task>) => request<Task>('/tasks', { method: 'POST', body: JSON.stringify(data) }),
-  updateTask: (id: number, data: Partial<Task>) =>
-    request<Task>(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteTask: (id: number) => request<{ ok: boolean }>(`/tasks/${id}`, { method: 'DELETE' }),
-
-  startFocusSession: (mode: string, taskId?: number | null) =>
-    request<{ id: number; startedAt: string }>('/focus/start', {
-      method: 'POST',
-      body: JSON.stringify({ mode, taskId: taskId ?? null }),
-    }),
-  endFocusSession: (id: number, duration: number, completed: boolean) =>
-    request<{ ok: boolean }>('/focus/end', {
-      method: 'POST',
-      body: JSON.stringify({ id, duration, completed }),
-    }),
-  getSessions: () => request<PomodoroSession[]>('/focus/sessions'),
-
-  getDaily: (days = 30) => request<DailyStat[]>(`/stats/daily?days=${days}`),
-  getSummary: () => request<Summary>('/stats/summary'),
-};
-```
-
-- [ ] **Step 5: Create the Zustand store**
+- [ ] **Step 7: Create the Zustand store**
 
 `client/src/store/index.ts`:
 ```ts
@@ -1716,31 +1012,31 @@ export const useStore = create<Store>((set, get) => ({
 }));
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [ ] **Step 8: Run tests to verify they pass**
 
-Run: `cd client && npx vitest run src/store/__tests__/store.test.ts src/App.test.tsx`
-Expected: PASS.
+Run: `cd client && npx vitest run`
+Expected: PASS — api tests + store tests + App smoke test all green.
 
 Run: `cd client && npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add client/src/types client/src/services client/src/store
-git commit -m "feat(client): types, api service, and zustand store with timer + moveTask logic"
+git commit -m "feat(client): types, localStorage-backed api, and zustand store with timer + moveTask logic"
 ```
 
 ---
 
-### Task 8: Sidebar + SearchBar
+### Task 3: Sidebar + SearchBar
 
 **Files:**
 - Modify: `client/src/components/Sidebar.tsx`
 - Create: `client/src/components/SearchBar.tsx`
 
 **Interfaces:**
-- Consumes: `useStore` (only `summary.todayMinutes` for the welcome line), `NavLink` from react-router-dom.
+- Consumes: `NavLink` from react-router-dom.
 - Produces: `Sidebar` (fixed dark column with brand, nav links 看板/专注/统计, bottom welcome + date) and `SearchBar` (controlled input with `value`/`onChange` props, pill shape).
 
 - [ ] **Step 1: Implement Sidebar**
@@ -1834,7 +1130,7 @@ git commit -m "feat(client): sidebar navigation and search bar"
 
 ---
 
-### Task 9: TaskCard + TaskModal
+### Task 4: TaskCard + TaskModal
 
 **Files:**
 - Create: `client/src/components/TaskCard.tsx`
@@ -1842,11 +1138,10 @@ git commit -m "feat(client): sidebar navigation and search bar"
 - Create: `client/src/components/__tests__/TaskCard.test.tsx`
 
 **Interfaces:**
-- Consumes: `Task`, `Column` types; `useStore` (`tasks`, `columns`, `deleteTask`, `updateTask`, `createTask`, `startTimer`); `useNavigate` for "一键专注" (navigates to `/focus` after starting).
+- Consumes: `Task`, `Column` types; `useStore` (`deleteTask`, `updateTask`, `createTask`, `startTimer`); `useNavigate` for "一键专注" (navigates to `/focus` after starting).
 - Produces:
-  - `TaskCard({ task, onEdit }: { task: Task; onEdit: (task: Task) => void })` — draggable card; rendered inside a `SortableTaskCard` wrapper in Task 10 that adds `useSortable` props. Buttons: 编辑 (opens modal), ⏱ 专注 (starts timer for task and navigates to /focus), 删除 (confirm then `deleteTask`).
+  - `TaskCard({ task, onEdit }: { task: Task; onEdit: (task: Task) => void })` — draggable card; rendered inside a `SortableTaskCard` wrapper in Task 5 that adds `useSortable` props. Buttons: 编辑 (opens modal), ⏱ 专注 (starts timer for task and navigates to /focus), 删除 (confirm then `deleteTask`).
   - `TaskModal({ open, onClose, task?, columns }: { open: boolean; onClose: () => void; task?: Task | null; columns: Column[] })` — form: 标题, 描述, 优先级 (3 pills), 截止日期 (date input), 所属列 (select). Save creates or updates via store.
-  - `useTaskForm()` is NOT exported — form state lives inside TaskModal.
 
 - [ ] **Step 1: Write the failing component test**
 
@@ -1929,12 +1224,12 @@ const PRIORITY_COLOR: Record<Task['priority'], string> = {
 
 const PRIORITY_LABEL: Record<Task['priority'], string> = { high: '高', medium: '中', low: '低' };
 
-interface TaskCardProps {
+interface TaskCardProps extends React.HTMLAttributes<HTMLElement> {
   task: Task;
   onEdit: (task: Task) => void;
 }
 
-export default function TaskCard({ task, onEdit }: TaskCardProps) {
+export default function TaskCard({ task, onEdit, ...rest }: TaskCardProps) {
   const startTimer = useStore((s) => s.startTimer);
   const deleteTask = useStore((s) => s.deleteTask);
   const navigate = useNavigate();
@@ -1951,7 +1246,7 @@ export default function TaskCard({ task, onEdit }: TaskCardProps) {
   }
 
   return (
-    <article className="group cursor-grab rounded-2xl border border-black/5 bg-white p-4 shadow-sm transition hover:scale-1.02 hover:shadow-md active:cursor-grabbing">
+    <article {...rest} className="group cursor-grab rounded-2xl border border-black/5 bg-white p-4 shadow-sm transition hover:scale-1.02 hover:shadow-md active:cursor-grabbing">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${PRIORITY_COLOR[task.priority]}`} title={`优先级：${PRIORITY_LABEL[task.priority]}`} />
@@ -2155,7 +1450,7 @@ git commit -m "feat(client): task card and task modal components"
 
 ---
 
-### Task 10: KanbanPage (5-column grid + drag-and-drop)
+### Task 5: KanbanPage (5-column grid + drag-and-drop)
 
 **Files:**
 - Modify: `client/src/pages/KanbanPage.tsx` (replace stub)
@@ -2164,30 +1459,9 @@ git commit -m "feat(client): task card and task modal components"
 **Interfaces:**
 - Consumes: `useStore` (`columns`, `tasks`, `moveTaskToIndex`), `TaskCard`, `TaskModal`, `SearchBar`, `@dnd-kit` (`DndContext`, `PointerSensor`, `closestCorners`), `@dnd-kit/sortable` (`SortableContext`, `verticalListSortingStrategy`, `useSortable`, `CSS`), Framer Motion (`AnimatePresence`, `motion`).
 - Produces: `KanbanPage` — top bar (title + 新建任务 + SearchBar), horizontal 5-column grid (`grid-cols-5` on `xl`, fallback horizontal scroll), per-column `SortableContext`, drag overlay, TaskModal wiring.
-- Produces: `SortableTaskCard({ task, onEdit })` — `useSortable` wrapper around `TaskCard` (passes `setNodeRef`, `style`, `attributes`, `listeners` to the card). Because TaskCard's root is an `<article>`, TaskCard must forward props; simplest approach: SortableTaskCard clones with a wrapper that spreads listeners, OR TaskCard accepts optional `dragHandleProps`/`style`/`setNodeRef`. **Decision: TaskCard accepts `dragOverlay?: boolean` and spreadable props via `forwardRef` + `...rest` on the `<article>`.** Modify TaskCard accordingly in this task.
+- Produces: `SortableTaskCard({ task, onEdit })` — `useSortable` wrapper around `TaskCard` (passes `setNodeRef`, `style`, `attributes`, `listeners`). TaskCard already spreads `...rest` onto its `<article>`, so it accepts these props directly (from Task 4).
 
-- [ ] **Step 1: Make TaskCard drag-ready**
-
-Modify `client/src/components/TaskCard.tsx`:
-- Change the component signature to `forwardRef<HTMLElement, TaskCardProps & React.HTMLAttributes<HTMLElement>>` and spread `...rest` onto the `<article>`, so `setNodeRef`, `attributes`, `listeners`, `style` from `useSortable` can be passed through:
-```tsx
-import { forwardRef } from 'react';
-
-interface TaskCardProps extends React.HTMLAttributes<HTMLElement> {
-  task: Task;
-  onEdit: (task: Task) => void;
-}
-
-const TaskCard = forwardRef<HTMLElement, TaskCardProps>(function TaskCard({ task, onEdit, ...rest }, ref) {
-  ...
-  return (
-    <article ref={ref} {...rest} className="group ...">
-  );
-});
-export default TaskCard;
-```
-
-- [ ] **Step 2: Create SortableTaskCard**
+- [ ] **Step 1: Create SortableTaskCard**
 
 `client/src/components/SortableTaskCard.tsx`:
 ```tsx
@@ -2221,7 +1495,16 @@ export default function SortableTaskCard({ task, onEdit }: Props) {
 }
 ```
 
-- [ ] **Step 3: Implement KanbanPage**
+Note: `TaskCard` needs to accept a `ref`. Change `TaskCard` in Task 4 to `forwardRef` so `setNodeRef` works:
+```tsx
+import { forwardRef } from 'react';
+const TaskCard = forwardRef<HTMLElement, TaskCardProps>(function TaskCard({ task, onEdit, ...rest }, ref) {
+  // ... same body ...
+  return <article ref={ref} {...rest} className="group ...">
+});
+```
+
+- [ ] **Step 2: Implement KanbanPage**
 
 `client/src/pages/KanbanPage.tsx`:
 ```tsx
@@ -2329,7 +1612,7 @@ export default function KanbanPage() {
                       <span className="rounded-full bg-appbg px-2 py-0.5 text-xs text-neutral-500">{colTasks.length}</span>
                     </h2>
                     <button
-                      onClick={() => { setEditing(null); setModalOpen(true); useStore.setState((s) => ({ modalDefaultColumn: column.id })); }}
+                      onClick={() => { setEditing(null); setModalOpen(true); useStore.setState({ modalDefaultColumn: column.id }); }}
                       aria-label={`添加到${column.title}`}
                       className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition hover:bg-appbg hover:text-neutral-700 active:scale-95"
                     >
@@ -2380,26 +1663,21 @@ export default function KanbanPage() {
 }
 ```
 
-Note on the "add to column" button: it sets the store's one-shot `modalDefaultColumn` hint (defined in Task 7's `initialStore`), and TaskModal (Task 9) already consumes it — when opening in create-mode it defaults the column to that hint or the first column.
+- [ ] **Step 3: Verify typecheck + tests**
 
-- [ ] **Step 4: Verify typecheck + build**
+Run: `cd client && npx tsc --noEmit && npx vitest run`
+Expected: no errors, all existing client tests green.
 
-Run: `cd client && npx tsc --noEmit`
-Expected: no errors.
-
-Run: `cd client && npx vitest run`
-Expected: PASS (all existing client tests still green).
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add client/src/pages/KanbanPage.tsx client/src/components/SortableTaskCard.tsx client/src/components/TaskCard.tsx client/src/store/index.ts
+git add client/src/pages/KanbanPage.tsx client/src/components/SortableTaskCard.tsx client/src/components/TaskCard.tsx
 git commit -m "feat(client): kanban board with 5-column grid and cross-column drag-drop"
 ```
 
 ---
 
-### Task 11: FocusTimer + PlayerBar
+### Task 6: FocusTimer + PlayerBar
 
 **Files:**
 - Modify: `client/src/components/PlayerBar.tsx` (replace stub)
@@ -2409,7 +1687,7 @@ git commit -m "feat(client): kanban board with 5-column grid and cross-column dr
 **Interfaces:**
 - Consumes: `useStore` (`status`, `mode`, `totalSeconds`, `remainingSeconds`, `taskId`, `tasks`, `setMode`, `startTimer`, `pauseTimer`, `resumeTimer`, `endTimer`), react-router `useNavigate`.
 - Produces:
-  - `FocusTimer` — big SVG progress ring + mm:ss + mode pills (专注/休息/自由) + task `<select>` + start/pause/resume/reset buttons. Uses `MODE_MINUTES` for labels (专注 25 分钟 / 休息 5 分钟 / 自由 25 分钟).
+  - `FocusTimer` — big SVG progress ring + mm:ss + mode pills (专注/休息/自由) + task `<select>` + start/pause/resume/reset buttons. Uses `MODE_MINUTES` for labels.
   - `PlayerBar` — floating frosted-glass pill fixed `bottom-6` centered. Left: current task title. Center: play/pause + stop buttons (round). Right: small SVG ring + mm:ss. When idle, shows「未在计时」and play button is disabled.
   - The global 1-second tick interval: `useEffect` in **App.tsx** — `if (status === 'running') { const i = setInterval(() => tick(), 1000); return () => clearInterval(i); }`. Add this to App.tsx in this task.
 
@@ -2670,7 +1948,7 @@ git commit -m "feat(client): focus timer ring and floating glassmorphism player 
 
 ---
 
-### Task 12: FocusPage
+### Task 7: FocusPage
 
 **Files:**
 - Modify: `client/src/pages/FocusPage.tsx` (replace stub)
@@ -2697,10 +1975,9 @@ const MODE_BADGE: Record<string, string> = {
 const MODE_LABEL: Record<string, string> = { focus: '专注', break: '休息', free: '自由' };
 
 function todaySessions(sessions: PomodoroSession[]): PomodoroSession[] {
-  const today = new Date();
   const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const todayKey = key(today);
-  return sessions.filter((s) => key(new Date(s.startedAt)).slice(0, 10) === todayKey);
+  const todayKey = key(new Date());
+  return sessions.filter((s) => key(new Date(s.startedAt)) === todayKey);
 }
 
 export default function FocusPage() {
@@ -2764,7 +2041,7 @@ git commit -m "feat(client): focus page with timer and today sessions list"
 
 ---
 
-### Task 13: StatsPage (heatmap + KPIs)
+### Task 8: StatsPage (heatmap + KPIs)
 
 **Files:**
 - Modify: `client/src/pages/StatsPage.tsx` (replace stub)
@@ -2772,7 +2049,7 @@ git commit -m "feat(client): focus page with timer and today sessions list"
 
 **Interfaces:**
 - Consumes: `useStore` (`daily`, `summary`, `loadStats`), `Summary`, `DailyStat`.
-- Produces: `StatsPage` — 4 KPI cards (总专注时长 / 总会话数 / 连续打卡 / 今日专注), a 30-day heatmap grid (`grid-cols-10`), weekday/month context line, and a legend.
+- Produces: `StatsPage` — 4 KPI cards (总专注时长 / 总会话数 / 连续打卡 / 今日专注), a 30-day heatmap grid (`grid-cols-10`), and a legend.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2926,37 +2203,33 @@ git commit -m "feat(client): stats page with KPI cards and 30-day heatmap"
 
 ---
 
-### Task 14: Integration verification + README
+### Task 9: Integration verification + README
 
 **Files:**
 - Create: `README.md` (root)
-- Create: `server/src/index.ts` (already exists from Task 2 — verify boot path; no change expected)
 
 **Interfaces:**
 - Consumes: everything.
-- Produces: verified end-to-end runnable app + developer docs.
 
-- [ ] **Step 1: Install all deps and run both test suites**
+- [ ] **Step 1: Install deps and run the full client test suite**
 
-Run: `cd D:\CheckBox\Astra && npm install && npm run test`
-Expected: both server and client test suites pass (no failures).
+Run: `cd D:\CheckBox\Astra && npm install && npm test`
+Expected: the client test suite passes (api, store, TaskCard, FocusTimer, StatsPage, App smoke).
 
-- [ ] **Step 2: Boot the full stack and verify the API end-to-end**
+- [ ] **Step 2: Boot the client and verify it serves**
 
-Run: `npm run dev` (background). Wait for "Astra API listening on http://localhost:3001" and Vite "ready in".
-Then verify with curl:
-- `curl http://localhost:3001/api/columns` → 4 default columns.
-- `curl -X POST http://localhost:3001/api/tasks -H "Content-Type: application/json" -d '{"title":"端到端测试","columnId":1}'` → 201 with task.
-- `curl http://localhost:5173/` → HTML shell (Vite serving).
-Then stop the dev server.
+Run: `npm run dev` (background). Wait for Vite "ready in". Then:
+- `curl http://localhost:5173/` → HTML shell.
+- Open `http://localhost:5173` in a browser.
 
 - [ ] **Step 3: Manual UI verification checklist**
 
 Using the run skill or a browser at `http://localhost:5173`:
-1. 看板: 新建任务 → 出现在「待办」列；编辑修改标题；拖拽任务到「进行中」列并刷新页面确认持久化；点击卡片 ⏱ 一键专注跳转到 /focus 且 PlayerBar 显示任务标题。
+1. 看板: 4 个默认列（待办/进行中/待审核/已完成）；新建任务 → 出现在列中；编辑修改标题；拖拽任务到另一列并刷新页面确认 localStorage 持久化；点击卡片 ⏱ 一键专注跳转到 /focus 且 PlayerBar 显示任务标题。
 2. 专注: 切到休息模式显示 05:00；开始 → PlayerBar 显示倒计时；结束 → 任务 pomodoroMinutes 增加、统计页更新。
 3. 统计: 显示 4 个 KPI 与 30 格热力图；今日专注 = 刚结束的会话时长。
 4. 全局: 侧边栏导航三页切换正常、选中态高亮；PlayerBar 毛玻璃效果、悬浮在底部居中。
+5. 刷新页面后数据仍在（localStorage `astra-db`）。
 
 - [ ] **Step 4: Write README**
 
@@ -2964,27 +2237,26 @@ Using the run skill or a browser at `http://localhost:5173`:
 ```markdown
 # Astra
 
-个人生产力 Web 应用：看板任务管理 + 番茄钟专注 + 数据统计。UI 参照 Apple Music Web 的扁平极简风格。
+个人生产力 Web 应用：看板任务管理 + 番茄钟专注 + 数据统计。UI 参照 Apple Music Web 的扁平极简风格（毛玻璃播放条、大圆角、深色侧边栏）。
 
 ## 技术栈
-- 前端：React 18 + TypeScript + Vite + TailwindCSS + Framer Motion + Zustand + @dnd-kit + react-router-dom
-- 后端：Node.js + Express + better-sqlite3 (SQLite)
+- React 18 + TypeScript + Vite + TailwindCSS + Framer Motion + Zustand + @dnd-kit + react-router-dom
+- 纯前端，数据持久化在浏览器 localStorage（键 `astra-db`）。`server/` 为留空壳，无后端 API。
 
 ## 快速开始
 \`\`\`bash
-npm install          # 安装根、server、client 依赖
-npm run dev          # 同时启动后端(3001)和前端(5173)
+npm install
+npm run dev
 \`\`\`
 打开 http://localhost:5173
 
 ## 脚本
-- \`npm run dev\` — 一键启动前后端
-- \`npm run server\` / \`npm run client\` — 单独启动
-- \`npm test\` — 运行前后端全部测试
+- \`npm run dev\` — 启动前端
+- \`npm test\` — 运行客户端测试
 
 ## 目录结构
-- \`server/\` — Express + better-sqlite3 API（端口 3001）
-- \`client/\` — React SPA（端口 5173，/api 代理到 3001）
+- \`client/\` — React SPA（端口 5173）
+- \`server/\` — 空壳（未实现，预留）
 ```
 
 - [ ] **Step 5: Final commit**
@@ -2998,6 +2270,7 @@ git commit -m "docs: add README and integration verification"
 
 ## Self-Review Notes
 
-- Spec §4 data model → Task 1 (schema). Spec §5 API → Tasks 2-5. Spec §6 frontend → Tasks 6-13. Spec §7 UI design system → enforced across Tasks 6, 8, 9, 11, 13 via the Global Constraints tokens. Spec §8 pages → Tasks 10, 12, 13. Spec §9 error handling → store `try/catch` + console.error in Task 7. Spec §10 non-goals → nothing built. Spec §11 acceptance → Task 14.
-- Placeholder risk: the three placeholder routers in Task 2 are intentional and explicitly replaced in Tasks 3-5; no other placeholders.
-- Type consistency: `moveTaskToIndex(taskId, columnId, index)` used identically in store (Task 7) and KanbanPage (Task 10). `startTimer(mode, taskId?)` consistent across store, TaskCard, FocusTimer. `endTimer(completed)` consistent across store, PlayerBar, FocusTimer. `api.updateTask(id, { columnId, order })` shape matches the server PUT partial contract in Task 3.
+- Frontend-only scope (user override on 2026-08-12): server is an empty shell; all data persistence is localStorage-backed through `services/api.ts`, which keeps the store's expected method signatures so the store code is identical to an HTTP design.
+- Spec coverage: Kanban CRUD + drag-drop → Tasks 4-5; focus modes/timer/session recording → Tasks 2, 6, 7; stats heatmap + KPIs → Tasks 2, 8; UI design system → enforced via Global Constraints across Tasks 1, 3, 4, 6, 8.
+- Type consistency: `moveTaskToIndex(taskId, columnId, index)` identical in store (Task 2) and KanbanPage (Task 5). `startTimer(mode, taskId?)` consistent across store, TaskCard, FocusTimer. `endTimer(completed)` consistent across store, PlayerBar, FocusTimer. `api.updateTask(id, { columnId, order })` matches the localStorage service in Task 2.
+- No placeholders: every code step contains full code. The server shell (Task 1) is intentionally empty per user requirement, not a plan gap.
