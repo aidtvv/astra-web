@@ -139,7 +139,9 @@ try {
 
         git remote set-url origin "https://aidtvv:${token}@github.com/${REPO}.git"
         try {
-            git push origin "$tmpBranch`:$GH_BRANCH"
+            # subtree split 每次生成与远程 gh-pages 无共同祖先的新历史，
+            # 必须用 --force 覆盖（gh-pages 是纯构建产物分支，历史连续性无意义）
+            git push --force origin "$tmpBranch`:$GH_BRANCH"
             if ($LASTEXITCODE -ne 0) { throw "git push gh-pages 失败（退出码 $LASTEXITCODE）" }
         } finally {
             git remote set-url origin "https://github.com/${REPO}.git"
