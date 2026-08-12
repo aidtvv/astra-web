@@ -1,13 +1,27 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import App from './App';
-
-// NOTE: At this task the pages/Sidebar/PlayerBar are stubs and App does not
-// touch the store yet, so no mocking is needed. Sidebar labels are asserted
-// once Sidebar is implemented.
+import { useStore } from './store';
 
 describe('App shell', () => {
+  beforeEach(() => {
+    localStorage.setItem('astra-token', 'mock-token');
+    localStorage.setItem(
+      'astra-user',
+      JSON.stringify({
+        id: 1,
+        email: 'test@example.com',
+        phone: '1234567890',
+        nickname: 'TestUser',
+        avatarUrl: '',
+        school: 'Test',
+        vipType: 0,
+      })
+    );
+    useStore.getState().initializeAuth();
+  });
+
   it('renders a main content region', () => {
     render(
       <MemoryRouter initialEntries={['/']}>

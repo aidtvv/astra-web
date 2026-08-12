@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Play, Pause, Square } from 'lucide-react';
 import { useStore, MODE_MINUTES, type FocusMode } from '../store';
 
 const MODES: { key: FocusMode; label: string }[] = [
@@ -15,14 +16,14 @@ function fmt(seconds: number) {
 
 export default function FocusTimer() {
   const { status, mode, totalSeconds, remainingSeconds, taskId, tasks, setMode, startTimer, pauseTimer, resumeTimer, endTimer } = useStore();
-  const [selectedTaskId, setSelectedTaskId] = useState<number | ''>('');
+  const [selectedTaskId, setSelectedTaskId] = useState<string | ''>('');
 
   const progress = totalSeconds > 0 ? remainingSeconds / totalSeconds : 1;
   const R = 128;
   const CIRC = 2 * Math.PI * R;
 
   function handleStart() {
-    const tid = selectedTaskId === '' ? null : Number(selectedTaskId);
+    const tid = selectedTaskId === '' ? null : selectedTaskId;
     startTimer(mode, tid);
   }
 
@@ -61,24 +62,24 @@ export default function FocusTimer() {
         {status === 'idle' ? (
           <button onClick={handleStart}
             className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-white shadow-lg transition hover:bg-primary-hover active:scale-95">
-            ▶
+            <Play size={24} strokeWidth={2} />
           </button>
         ) : status === 'paused' ? (
           <button onClick={resumeTimer}
             className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-white shadow-lg transition hover:bg-primary-hover active:scale-95">
-            ▶
+            <Play size={24} strokeWidth={2} />
           </button>
         ) : (
           <button onClick={pauseTimer}
             className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-900 text-white shadow-lg transition active:scale-95">
-            ❚❚
+            <Pause size={24} strokeWidth={2} />
           </button>
         )}
         {status !== 'idle' && (
           <button onClick={() => endTimer(false)}
             className="flex h-12 w-12 items-center justify-center rounded-full bg-appbg text-neutral-500 transition hover:bg-red-100 hover:text-red-600 active:scale-95"
             aria-label="结束">
-            ⏹
+            <Square size={18} strokeWidth={2} fill="currentColor" />
           </button>
         )}
       </div>
@@ -87,7 +88,7 @@ export default function FocusTimer() {
         <label className="block text-sm font-medium text-neutral-600">关联任务</label>
         <select
           value={taskId ?? selectedTaskId}
-          onChange={(e) => setSelectedTaskId(e.target.value === '' ? '' : Number(e.target.value))}
+          onChange={(e) => setSelectedTaskId(e.target.value)}
           disabled={status !== 'idle'}
           className="mt-1.5 w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-primary disabled:opacity-60"
         >

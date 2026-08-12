@@ -13,37 +13,75 @@ vi.mock('../../services/api', () => ({
     startFocusSession: vi.fn(async () => ({ id: 1, startedAt: '' })),
     endFocusSession: vi.fn(async () => ({ ok: true })),
     updateTask: vi.fn(async () => ({})),
+    fetchFocusRecords: vi.fn(async () => []),
+    getFocusStats: vi.fn(async () => ({
+      totalMinutes: 175,
+      totalSessions: 7,
+      completedSessions: 5,
+      streakDays: 3,
+      dailyMinutes: {},
+      taskBreakdown: {},
+      longestSession: null,
+      avgDailyMinutes: 25,
+    })),
+    computeStatsFromRecords: vi.fn(() => ({
+      totalMinutes: 175,
+      totalSessions: 7,
+      completedSessions: 5,
+      streakDays: 3,
+      dailyMinutes: {},
+      taskBreakdown: {},
+      longestSession: null,
+      avgDailyMinutes: 25,
+    })),
   },
 }));
 
 beforeEach(() => {
   useStore.setState({
     ...initialStore,
-    summary: { totalMinutes: 175, totalSessions: 7, streakDays: 3, todayMinutes: 50 },
-    daily: Array.from({ length: 30 }, (_, i) => ({
-      date: `2026-07-${String(i + 1).padStart(2, '0')}`,
-      minutes: i % 5 === 0 ? 50 : 0,
-    })),
+    focusStats: {
+      totalMinutes: 175,
+      totalSessions: 7,
+      completedSessions: 5,
+      streakDays: 3,
+      dailyMinutes: {},
+      taskBreakdown: {},
+      longestSession: null,
+      avgDailyMinutes: 25,
+    },
+    focusTimeRecords: [],
+    statsViewRange: 'week',
   });
   vi.clearAllMocks();
 });
 
 describe('StatsPage', () => {
-  it('renders 4 KPI cards with formatted values', () => {
+  it('renders KPI cards with formatted values', () => {
     render(<StatsPage />);
     expect(screen.getByText('总专注时长')).toBeTruthy();
-    expect(screen.getByText('2h 55m')).toBeTruthy(); // 175 min
-    expect(screen.getByText('总会话数')).toBeTruthy();
-    expect(screen.getByText('7')).toBeTruthy();
+    expect(screen.getByText('2 小时 55 分钟')).toBeTruthy();
+    expect(screen.getByText('完成会话')).toBeTruthy();
+    expect(screen.getByText('5')).toBeTruthy();
     expect(screen.getByText('连续打卡')).toBeTruthy();
     expect(screen.getByText('3 天')).toBeTruthy();
-    expect(screen.getByText('今日专注')).toBeTruthy();
-    expect(screen.getByText('50 分钟')).toBeTruthy();
+    expect(screen.getByText('日均专注')).toBeTruthy();
   });
 
-  it('renders a heatmap with 30 cells', () => {
+  it('renders view range selector', () => {
     render(<StatsPage />);
-    const cells = document.querySelectorAll('[data-testid="heat-cell"]');
-    expect(cells.length).toBe(30);
+    expect(screen.getByText('日')).toBeTruthy();
+    expect(screen.getByText('周')).toBeTruthy();
+    expect(screen.getByText('月')).toBeTruthy();
+    expect(screen.getByText('年')).toBeTruthy();
+    expect(screen.getByText('所有')).toBeTruthy();
+  });
+
+  it('renders bento grid sections', () => {
+    render(<StatsPage />);
+    expect(screen.getByText('每日专注趋势')).toBeTruthy();
+    expect(screen.getByText('最近专注')).toBeTruthy();
+    expect(screen.getByText('专注亮点')).toBeTruthy();
+    expect(screen.getByText('任务分类占比')).toBeTruthy();
   });
 });

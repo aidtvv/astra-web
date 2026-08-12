@@ -1,3 +1,4 @@
+import { Play, Pause, Square } from 'lucide-react';
 import { useStore } from '../store';
 
 const MODE_LABEL = { focus: '专注', break: '休息', free: '自由' } as const;
@@ -31,10 +32,10 @@ export default function PlayerBar() {
           <button
             onClick={() => (status === 'running' ? pauseTimer() : status === 'paused' ? resumeTimer() : undefined)}
             disabled={!active}
-            aria-label="播放或暂停"
+            aria-label={status === 'running' ? '暂停' : '继续'}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-700 active:scale-95 disabled:opacity-40"
           >
-            {status === 'running' ? '❚❚' : '▶'}
+            {status === 'running' ? <Pause size={16} strokeWidth={2} /> : <Play size={16} strokeWidth={2} />}
           </button>
           <button
             onClick={() => endTimer(false)}
@@ -42,7 +43,7 @@ export default function PlayerBar() {
             aria-label="结束"
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary-hover active:scale-95 disabled:opacity-40"
           >
-            ⏹
+            <Square size={14} strokeWidth={2} fill="currentColor" />
           </button>
         </div>
 

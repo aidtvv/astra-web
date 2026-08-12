@@ -6,7 +6,7 @@ export default {
       colors: {
         primary: { DEFAULT: '#fa2d48', hover: '#e0243d', soft: '#ffeef0' },
         sidebar: '#1d1d1f',
-        appbg: '#f5f5f7',
+        appbg: '#ffffff',
       },
       // Design specifies `hover:scale-1.02`, which is not a default Tailwind
       // scale key — add the token so the utility generates real CSS.

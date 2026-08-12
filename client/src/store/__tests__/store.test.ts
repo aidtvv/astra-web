@@ -7,8 +7,7 @@ vi.mock('../../services/api', () => ({
     startFocusSession: vi.fn(async () => ({ id: 1, startedAt: '2026-08-12T00:00:00.000Z' })),
     endFocusSession: vi.fn(async () => ({ ok: true })),
     updateTask: vi.fn(async () => ({})),
-    getTasks: vi.fn(async () => []),
-    getColumns: vi.fn(async () => []),
+    loadAll: vi.fn(async () => ({ columns: [], tasks: [], sessions: [] })),
     getSessions: vi.fn(async () => []),
     getDaily: vi.fn(async () => []),
     getSummary: vi.fn(async () => ({ totalMinutes: 0, totalSessions: 0, streakDays: 0, todayMinutes: 0 })),
@@ -20,6 +19,15 @@ const mockApi = api as unknown as {
   endFocusSession: ReturnType<typeof vi.fn>;
   updateTask: ReturnType<typeof vi.fn>;
 };
+
+function makeTask(id: string, title: string, columnId: string, order: number) {
+  return {
+    id, title, columnId, order, description: '', priority: 'medium' as const,
+    pomodoroMinutes: 0, dueDate: null, completedAt: null, createdAt: '',
+    scheduledTime: null as number | null, startTime: null as number | null,
+    endTime: null as number | null,
+  };
+}
 
 beforeEach(() => {
   useStore.setState(initialStore);
@@ -53,10 +61,8 @@ describe('timer state machine', () => {
 
   it('auto-completes when remaining hits zero and records 25 minutes', async () => {
     await useStore.getState().startTimer('focus');
-    // fast-forward to 1 second remaining
     useStore.setState({ remainingSeconds: 1 });
     useStore.getState().tick();
-    // endTimer is async (two awaits inside) — wait for it to flush
     await vi.waitFor(() => expect(useStore.getState().status).toBe('idle'));
     expect(mockApi.endFocusSession).toHaveBeenCalledWith(1, 25, true);
   });
@@ -70,32 +76,40 @@ describe('timer state machine', () => {
 });
 
 describe('moveTaskToIndex', () => {
-  it('reorders within a column and persists the moved task', async () => {
+  it('reorders within a column and preserves moved task properties', async () => {
     useStore.setState({
       ...initialStore,
       tasks: [
-        { id: 1, title: 'A', columnId: 1, order: 0, description: '', priority: 'medium', pomodoroMinutes: 0, dueDate: null, completedAt: null, createdAt: '' },
-        { id: 2, title: 'B', columnId: 1, order: 1, description: '', priority: 'medium', pomodoroMinutes: 0, dueDate: null, completedAt: null, createdAt: '' },
+        makeTask('1', 'A', '1', 0),
+        makeTask('2', 'B', '1', 1),
       ],
     });
-    await useStore.getState().moveTaskToIndex(2, 1, 0);
+    await useStore.getState().moveTaskToIndex('2', '1', 0);
     const tasks = useStore.getState().tasks;
-    expect(tasks.find(t => t.id === 2)!.order).toBe(0);
-    expect(tasks.find(t => t.id === 1)!.order).toBe(1);
-    expect(mockApi.updateTask).toHaveBeenCalledWith(2, { columnId: 1, order: 0 });
+    expect(tasks.find(t => t.id === '2')!.order).toBe(0);
+    expect(tasks.find(t => t.id === '1')!.order).toBe(1);
+    // The moved task ('2') is uploaded with its full property snapshot
+    // so that title/priority/etc. are never stripped by the server.
+    const movedCall = mockApi.updateTask.mock.calls.find(
+      (c: any[]) => c[0] === '2'
+    );
+    expect(movedCall).toBeTruthy();
+    expect(movedCall![1].order).toBe(0);
+    expect(movedCall![1].columnId).toBe('1');
+    expect(movedCall![1].title).toBe('B');
   });
 
   it('moves a task across columns and updates columnId', async () => {
     useStore.setState({
       ...initialStore,
       tasks: [
-        { id: 1, title: 'A', columnId: 1, order: 0, description: '', priority: 'medium', pomodoroMinutes: 0, dueDate: null, completedAt: null, createdAt: '' },
-        { id: 2, title: 'B', columnId: 2, order: 0, description: '', priority: 'medium', pomodoroMinutes: 0, dueDate: null, completedAt: null, createdAt: '' },
+        makeTask('1', 'A', '1', 0),
+        makeTask('2', 'B', '2', 0),
       ],
     });
-    await useStore.getState().moveTaskToIndex(1, 2, 0);
-    const moved = useStore.getState().tasks.find(t => t.id === 1)!;
-    expect(moved.columnId).toBe(2);
+    await useStore.getState().moveTaskToIndex('1', '2', 0);
+    const moved = useStore.getState().tasks.find(t => t.id === '1')!;
+    expect(moved.columnId).toBe('2');
     expect(moved.order).toBe(0);
   });
 });
