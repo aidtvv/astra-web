@@ -60,13 +60,23 @@ try {
     }
 
     # ---------- 3. 把 dist 推送到 gh-pages 分支 ----------
-    # 用 subtree split 提取 client/dist 目录，推送到 gh-pages 分支
+    # 流程：临时提交 dist -> subtree split 提取 -> 推送 gh-pages -> 回退临时提交
     Write-Host '→ 推送 gh-pages 分支…'
     $tmpBranch = "ghpages-deploy-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $dist = Join-Path $PSScriptRoot 'client\dist'
     try {
-        # --prefix 要求提交里的路径；dist 被 .gitignore 忽略，需强制添加
+        # SPA fallback：深层路由（如 /stats）刷新时由 404.html 兜底加载应用
+        if (-not (Test-Path (Join-Path $dist 'index.html'))) {
+            throw '构建产物缺失：client/dist/index.html 不存在'
+        }
+        Copy-Item (Join-Path $dist 'index.html') (Join-Path $dist '404.html') -Force
+
+        # dist 被 .gitignore 忽略，需强制加入并单独提交
         git add -f client/dist
-        git commit -m "chore: 构建产物 client/dist（部署用）" -o client/dist 2>$null
+        $tmpCommit = git rev-parse HEAD
+        git commit -m "chore: 构建产物 client/dist（部署用）"
+        if ($LASTEXITCODE -ne 0) { throw "git commit dist 失败（退出码 $LASTEXITCODE）" }
+
         # 提取 client/dist 为独立分支
         git subtree split --prefix client/dist -b $tmpBranch
         if ($LASTEXITCODE -ne 0) { throw "git subtree split 失败（退出码 $LASTEXITCODE）" }
@@ -78,8 +88,11 @@ try {
         } finally {
             git remote set-url origin "https://github.com/${REPO}.git"
         }
-        # 清理临时的 dist 提交
-        git reset --hard HEAD~1 2>$null
+
+        # 回退临时 dist 提交（仅当最近提交就是它时）
+        if ((git rev-parse HEAD) -ne $tmpCommit) {
+            git reset --hard $tmpCommit
+        }
     } finally {
         git branch -D $tmpBranch 2>$null
     }
