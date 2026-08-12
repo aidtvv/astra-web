@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
+import { useStore } from './store';
 import Sidebar from './components/Sidebar';
 import PlayerBar from './components/PlayerBar';
 import KanbanPage from './pages/KanbanPage';
@@ -6,6 +8,14 @@ import FocusPage from './pages/FocusPage';
 import StatsPage from './pages/StatsPage';
 
 export default function App() {
+  const status = useStore((s) => s.status);
+  const tick = useStore((s) => s.tick);
+  useEffect(() => {
+    if (status !== 'running') return;
+    const interval = setInterval(() => tick(), 1000);
+    return () => clearInterval(interval);
+  }, [status, tick]);
+
   return (
     <div className="min-h-screen">
       <Sidebar />
