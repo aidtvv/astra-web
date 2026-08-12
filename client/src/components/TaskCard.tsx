@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Task } from '../types';
 import { useStore } from '../store';
@@ -15,7 +16,7 @@ interface TaskCardProps extends React.HTMLAttributes<HTMLElement> {
   onEdit: (task: Task) => void;
 }
 
-export default function TaskCard({ task, onEdit, ...rest }: TaskCardProps) {
+const TaskCard = forwardRef<HTMLElement, TaskCardProps>(function TaskCard({ task, onEdit, ...rest }, ref) {
   const startTimer = useStore((s) => s.startTimer);
   const deleteTask = useStore((s) => s.deleteTask);
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export default function TaskCard({ task, onEdit, ...rest }: TaskCardProps) {
   }
 
   return (
-    <article {...rest} className="group cursor-grab rounded-2xl border border-black/5 bg-white p-4 shadow-sm transition hover:scale-1.02 hover:shadow-md active:cursor-grabbing">
+    <article ref={ref} {...rest} className="group cursor-grab rounded-2xl border border-black/5 bg-white p-4 shadow-sm transition hover:scale-1.02 hover:shadow-md active:cursor-grabbing">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${PRIORITY_COLOR[task.priority]}`} title={`优先级：${PRIORITY_LABEL[task.priority]}`} />
@@ -70,4 +71,6 @@ export default function TaskCard({ task, onEdit, ...rest }: TaskCardProps) {
       </div>
     </article>
   );
-}
+});
+
+export default TaskCard;
