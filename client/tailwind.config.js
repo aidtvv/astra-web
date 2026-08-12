@@ -8,6 +8,11 @@ export default {
         sidebar: '#1d1d1f',
         appbg: '#f5f5f7',
       },
+      // Design specifies `hover:scale-1.02`, which is not a default Tailwind
+      // scale key — add the token so the utility generates real CSS.
+      scale: {
+        '1.02': '1.02',
+      },
       fontFamily: {
         sans: ['SF Pro Display', 'SF Pro Text', '-apple-system', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
       },
