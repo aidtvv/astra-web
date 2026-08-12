@@ -1,0 +1,9 @@
+{
+  "name": "astra-server",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Empty shell. API intentionally not implemented — Astra runs frontend-only and persists data in browser localStorage.",
+  "scripts": {
+    "dev": "echo 'Astra server is an empty shell. Run the client instead: npm run dev at the repo root.'"
+  }
+}
