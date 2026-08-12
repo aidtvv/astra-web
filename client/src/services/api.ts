@@ -1,7 +1,7 @@
 import type { Column, Task, PomodoroSession, DailyStat, Summary, TodoListDTO, TodoItemDTO, PriorityLevel, FocusTimeRecord, FocusStats, StatsViewRange } from '../types';
 import { getToken, getStoredUser } from './auth';
 
-const API_BASE = import.meta.env.DEV ? '' : 'https://todo.i99yun.com';
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 const DB_KEY = 'astra-db';
 

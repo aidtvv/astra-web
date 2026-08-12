@@ -1,6 +1,6 @@
 import type { LoginResponse } from '../types';
 
-const API_BASE = import.meta.env.DEV ? '' : 'https://todo.i99yun.com';
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 const TOKEN_KEY = 'astra-token';
 const USER_KEY = 'astra-user';
 

@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # Astra 部署到 GitHub Pages（gh-pages 分支方案）
 # 用法：
 #   方式一（推荐）：右键 deploy.ps1 -> 使用 PowerShell 运行
@@ -73,15 +73,30 @@ function Select-Mode {
 }
 
 function Invoke-Build {
-    Step '构建 client（VITE_BASE=/astra-web/）'
-    $env:VITE_BASE = '/astra-web/'
+    Step '构建 client（生产环境）'
+    
+    # 检查 .env.production 是否存在
+    $envFile = Join-Path $PSScriptRoot 'client\.env.production'
+    if (-not (Test-Path $envFile)) {
+        Write-Host '  警告：.env.production 不存在，将创建默认版本' -ForegroundColor Yellow
+        $workerUrl = Read-Host '  请输入你的 Cloudflare Worker URL（如 https://astra-api.workers.dev）'
+        if ([string]::IsNullOrWhiteSpace($workerUrl)) {
+            $workerUrl = 'https://astra-api.workers.dev'
+        }
+        @"
+# 生产环境 - 部署到 GitHub Pages
+VITE_API_BASE=$workerUrl
+VITE_BASE=/astra-web/
+"@ | Out-File -FilePath $envFile -Encoding utf8
+        Ok ".env.production 已创建（Worker URL: $workerUrl）"
+    }
+    
     Push-Location (Join-Path $PSScriptRoot 'client')
     try {
         npm run build
         if ($LASTEXITCODE -ne 0) { throw "npm run build 失败（退出码 $LASTEXITCODE）" }
     } finally {
         Pop-Location
-        Remove-Item Env:VITE_BASE -ErrorAction SilentlyContinue
     }
     Ok '构建完成'
 }
