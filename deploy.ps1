@@ -1,11 +1,11 @@
 ﻿# ============================================================
-# Astra 一键部署到 GitHub Pages（gh-pages 分支方案）
+# Astra 部署到 GitHub Pages（gh-pages 分支方案）
 # 用法：
 #   方式一（推荐）：右键 deploy.ps1 -> 使用 PowerShell 运行
 #   方式二：powershell -ExecutionPolicy Bypass -File deploy.ps1 "更新说明(可选)"
-# 流程：1. 构建 client（VITE_BASE=/astra-web/）
-#       2. 提交并推送源码到 main
-#       3. 把 client/dist 推送到 gh-pages 分支，Pages 托管该分支
+# 菜单：
+#   [1] 完整部署   构建 + 提交源码到 main + 推 gh-pages
+#   [2] 只更新网站 构建当前代码 + 只推 gh-pages（不提交源码）
 # 令牌来源：优先环境变量 $env:GH_TOKEN，否则读取 D:\CheckBox\课表处理\.deploy_token。
 # ============================================================
 $ErrorActionPreference = 'Stop'
@@ -25,7 +25,7 @@ function Show-Banner {
     Clear-Host
     Write-Host ''
     Write-Host '  ┌─────────────────────────────────────────────┐' -ForegroundColor Cyan
-    Write-Host '  │        Astra 一键部署到 GitHub Pages        │' -ForegroundColor Cyan
+    Write-Host '  │        Astra 部署到 GitHub Pages            │' -ForegroundColor Cyan
     Write-Host '  └─────────────────────────────────────────────┘' -ForegroundColor Cyan
     Write-Host ''
     Write-Host "  仓库   : $REPO" -ForegroundColor Gray
@@ -53,27 +53,26 @@ function Ask-Confirm($prompt, $defaultYes = $true) {
     return $answer.Trim().ToLower() -match '^(y|yes|是|对)$'
 }
 
-try {
-    Show-Banner
-
-    # ---------- 读取令牌 ----------
-    $token = $env:GH_TOKEN
-    if (-not $token -and (Test-Path $TOKEN_FILE)) {
-        $token = (Get-Content $TOKEN_FILE -Raw).Trim()
+function Select-Mode {
+    Write-Host '  请选择操作：' -ForegroundColor White
+    Write-Host ''
+    Write-Host '    [1] 完整部署   构建 + 提交源码到 main + 推 gh-pages' -ForegroundColor Cyan
+    Write-Host '    [2] 只更新网站 构建当前代码 + 只推 gh-pages（不提交源码）' -ForegroundColor Cyan
+    Write-Host '    [0] 退出' -ForegroundColor Gray
+    Write-Host ''
+    $answer = Read-Host '  请输入编号'
+    switch ($answer.Trim()) {
+        '1' { return 'full' }
+        '2' { return 'web' }
+        '0' { Write-Host '  已退出。' -ForegroundColor Gray; exit 0 }
+        default {
+            Write-Host '  无效输入，已退出。' -ForegroundColor Red
+            exit 1
+        }
     }
-    if (-not $token) {
-        Fail "未找到 GitHub 令牌：请设置环境变量 GH_TOKEN，或在 $TOKEN_FILE 写入令牌。"
-        throw '缺少 GitHub 令牌'
-    }
-    Ok 'GitHub 令牌已就绪'
+}
 
-    # ---------- 确认开始 ----------
-    if (-not (Ask-Confirm '是否开始部署？')) {
-        Write-Host '  已取消。' -ForegroundColor Gray
-        exit 0
-    }
-
-    # ---------- 1. 构建 client ----------
+function Invoke-Build {
     Step '构建 client（VITE_BASE=/astra-web/）'
     $env:VITE_BASE = '/astra-web/'
     Push-Location (Join-Path $PSScriptRoot 'client')
@@ -85,8 +84,10 @@ try {
         Remove-Item Env:VITE_BASE -ErrorAction SilentlyContinue
     }
     Ok '构建完成'
+}
 
-    # ---------- 2. 提交并推送源码到 main ----------
+function Invoke-PushSource {
+    # 提交并推送源码到 main
     $changes = git status --porcelain
     if ($changes) {
         $msg = $args[0]
@@ -115,11 +116,14 @@ try {
         git remote set-url origin "https://github.com/${REPO}.git"
     }
     Ok 'main 已推送'
+}
 
-    # ---------- 3. 把 dist 推送到 gh-pages 分支 ----------
+function Invoke-PushGhPages {
+    # 把构建产物 client/dist 推送到 gh-pages 分支
     Step '推送 gh-pages 分支'
     $tmpBranch = "ghpages-deploy-$([guid]::NewGuid().ToString('N').Substring(0,8))"
     $dist = Join-Path $PSScriptRoot 'client\dist'
+    $savedHead = git rev-parse HEAD
     try {
         # SPA fallback：深层路由（如 /stats）刷新时由 404.html 兜底加载应用
         if (-not (Test-Path (Join-Path $dist 'index.html'))) {
@@ -127,10 +131,9 @@ try {
         }
         Copy-Item (Join-Path $dist 'index.html') (Join-Path $dist '404.html') -Force
 
-        # dist 被 .gitignore 忽略，需强制加入并单独提交
+        # 只暂存并提交 dist 目录，绝不把其他未提交源码改动带进去
         git add -f client/dist
-        $tmpCommit = git rev-parse HEAD
-        git commit -m "chore: 构建产物 client/dist（部署用）"
+        git commit -m "chore: 构建产物 client/dist（部署用）" -- client/dist
         if ($LASTEXITCODE -ne 0) { throw "git commit dist 失败（退出码 $LASTEXITCODE）" }
 
         # 提取 client/dist 为独立分支
@@ -147,20 +150,56 @@ try {
             git remote set-url origin "https://github.com/${REPO}.git"
         }
 
-        # 回退临时 dist 提交（仅当最近提交就是它时）
-        if ((git rev-parse HEAD) -ne $tmpCommit) {
-            git reset --hard $tmpCommit
+        # 回退临时 dist 提交（仅当最近提交就是它时）；--soft 保证不丢工作区改动
+        if ((git rev-parse HEAD) -ne $savedHead) {
+            git reset --soft $savedHead
+            git reset -q HEAD -- client/dist
         }
     } finally {
         git branch -D $tmpBranch 2>$null
     }
     Ok 'gh-pages 已推送'
+}
 
-    Write-Host ''
-    Write-Host '  ═══════════════════════════════════════════' -ForegroundColor Cyan
-    Write-Host '  ✅ 部署完成！Pages 正在刷新，约 1 分钟后生效。' -ForegroundColor Green
-    Write-Host '  🌐 https://aidtvv.github.io/astra-web/' -ForegroundColor Green
-    Write-Host '  ═══════════════════════════════════════════' -ForegroundColor Cyan
+try {
+    Show-Banner
+
+    # ---------- 读取令牌 ----------
+    $token = $env:GH_TOKEN
+    if (-not $token -and (Test-Path $TOKEN_FILE)) {
+        $token = (Get-Content $TOKEN_FILE -Raw).Trim()
+    }
+    if (-not $token) {
+        Fail "未找到 GitHub 令牌：请设置环境变量 GH_TOKEN，或在 $TOKEN_FILE 写入令牌。"
+        throw '缺少 GitHub 令牌'
+    }
+    Ok 'GitHub 令牌已就绪'
+
+    # ---------- 选择模式 ----------
+    $mode = Select-Mode
+
+    # ---------- 构建（两种模式都先构建） ----------
+    Invoke-Build
+
+    if ($mode -eq 'full') {
+        # 完整部署：提交源码 + 推送 main + 推送 gh-pages
+        Invoke-PushSource $args[0]
+        Invoke-PushGhPages
+        Write-Host ''
+        Write-Host '  ═══════════════════════════════════════════' -ForegroundColor Cyan
+        Write-Host '  ✅ 完整部署完成！源码与网站均已更新。' -ForegroundColor Green
+        Write-Host '  🌐 https://aidtvv.github.io/astra-web/' -ForegroundColor Green
+        Write-Host '  ═══════════════════════════════════════════' -ForegroundColor Cyan
+    } else {
+        # 只更新网站：仅推送 gh-pages，源码提交留待以后
+        Invoke-PushGhPages
+        Write-Host ''
+        Write-Host '  ═══════════════════════════════════════════' -ForegroundColor Cyan
+        Write-Host '  ✅ 网站已更新！（源码未提交，可稍后用完整部署提交）' -ForegroundColor Green
+        Write-Host '  🌐 https://aidtvv.github.io/astra-web/' -ForegroundColor Green
+        Write-Host '  ═══════════════════════════════════════════' -ForegroundColor Cyan
+    }
+
     Write-Host ''
 } catch {
     Write-Host ''
