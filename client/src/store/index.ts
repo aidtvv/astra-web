@@ -41,6 +41,7 @@ export const initialStore = {
   remainingSeconds: 25 * 60,
   taskId: null as string | null,
   sessionId: null as number | null,
+  sessionUuid: null as string | null,
   modalDefaultColumn: null as string | null,
   user: null as AuthenticatedUser | null,
   isAuthenticated: false,
@@ -102,7 +103,7 @@ interface Store extends StoreState {
 }
 
 function resetTimerFields(initial: typeof initialStore): Partial<Store> {
-  return { status: 'idle', sessionId: null, taskId: null, remainingSeconds: initial.totalSeconds };
+  return { status: 'idle', sessionId: null, sessionUuid: null, taskId: null, remainingSeconds: initial.totalSeconds };
 }
 
 function genOpId(): string {
@@ -453,13 +454,27 @@ export const useStore = create<Store>((set, get) => ({
       mode,
       taskId,
       sessionId: res.id,
+      sessionUuid: res.uuid,
       totalSeconds: MODE_MINUTES[mode] * 60,
       remainingSeconds: MODE_MINUTES[mode] * 60,
     });
   },
 
-  pauseTimer: () => set((s) => (s.status === 'running' ? { status: 'paused' } : {})),
-  resumeTimer: () => set((s) => (s.status === 'paused' ? { status: 'running' } : {})),
+  pauseTimer: () => {
+    const { status, sessionUuid } = get();
+    if (status === 'running' && sessionUuid) {
+      api.pauseFocusSession(sessionUuid).catch((e) => console.warn('pause API failed:', e));
+    }
+    set((s) => (s.status === 'running' ? { status: 'paused' } : {}));
+  },
+
+  resumeTimer: () => {
+    const { status, sessionUuid } = get();
+    if (status === 'paused' && sessionUuid) {
+      api.resumeFocusSession(sessionUuid).catch((e) => console.warn('resume API failed:', e));
+    }
+    set((s) => (s.status === 'paused' ? { status: 'running' } : {}));
+  },
 
   tick: () => {
     const { status, remainingSeconds } = get();

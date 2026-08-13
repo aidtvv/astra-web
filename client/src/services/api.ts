@@ -3,6 +3,8 @@ import { getToken, getStoredUser } from './auth';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
+const MODE_MINUTES: Record<string, number> = { focus: 25, break: 5, free: 25 };
+
 const DB_KEY = 'astra-db';
 
 export interface LocalDB {
@@ -72,9 +74,28 @@ function mapLevelToPriority(level: PriorityLevel): number {
 }
 
 function generateUuid(): string {
-  const ts = Date.now();
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `${ts}-${rand}`;
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 16; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+function getNextDayNum(): number {
+  const key = 'astra-focus-daynum';
+  const stored = localStorage.getItem(key);
+  const next = stored ? parseInt(stored, 10) + 1 : 1;
+  localStorage.setItem(key, String(next));
+  return next;
+}
+
+function modeToType(mode: string): number {
+  switch (mode) {
+    case 'break': return 1;
+    case 'free': return 2;
+    default: return 0;
+  }
 }
 
 async function fetchJson<T>(path: string, options?: RequestInit, retries = 3): Promise<T> {
@@ -777,9 +798,49 @@ export const api = {
     }
   },
 
-  startFocusSession: async (mode: string, taskId?: string | null): Promise<{ id: number; startedAt: string }> => {
+  startFocusSession: async (mode: string, taskId?: string | null): Promise<{ id: number; uuid: string; startedAt: string }> => {
     const db = loadDB();
     const task = taskId != null ? db.tasks.find((t) => t.id === taskId) : undefined;
+    const now = Date.now();
+    const uuid = generateUuid();
+    const dayNum = getNextDayNum();
+    const modeType = modeToType(mode);
+    const scheduledMinutes = MODE_MINUTES[mode as keyof typeof MODE_MINUTES] ?? 25;
+
+    const focusTimePayload = {
+      uuid,
+      name: task?.title ?? '',
+      comment: '',
+      userId: 0,
+      startTime: now,
+      endTime: 0,
+      scheduledTime: scheduledMinutes * 60 * 1000,
+      pauseStartTime: 0,
+      pauseEndTime: 0,
+      pauseTotalTime: 0,
+      dayNum,
+      state: 1,
+      type: modeType,
+      createTime: now,
+      updateTime: now,
+      isSync: 0,
+      isDeleted: 0,
+    };
+
+    try {
+      const user = getStoredUser();
+      if (user) {
+        focusTimePayload.userId = user.id;
+        const saved = await fetchJson<any>('/api/v3/focus-times', {
+          method: 'PUT',
+          body: JSON.stringify(focusTimePayload),
+        });
+        console.log('[startFocusSession] API call succeeded:', { uuid: saved?.uuid, state: saved?.state });
+      }
+    } catch (e) {
+      console.warn('[startFocusSession] API call failed, saving locally:', e);
+    }
+
     const session: PomodoroSession = {
       id: nextId(db),
       taskId: taskId ?? null,
@@ -792,21 +853,129 @@ export const api = {
     };
     db.sessions.unshift(session);
     saveDB(db);
-    return { id: session.id, startedAt: session.startedAt };
+
+    const sessionKey = 'astra-focus-current';
+    localStorage.setItem(sessionKey, JSON.stringify({
+      uuid,
+      startTime: now,
+      pauseTotalTime: 0,
+      mode,
+      taskId: taskId ?? null,
+    }));
+
+    return { id: session.id, uuid, startedAt: session.startedAt };
+  },
+
+  pauseFocusSession: async (_uuid: string): Promise<void> => {
+    const sessionKey = 'astra-focus-current';
+    const raw = localStorage.getItem(sessionKey);
+    if (!raw) return;
+
+    const state = JSON.parse(raw);
+    const now = Date.now();
+    state.pauseStartTime = now;
+
+    try {
+      const user = getStoredUser();
+      if (user) {
+        const payload = {
+          ...state,
+          state: 2,
+          updateTime: now,
+        };
+        await fetchJson<any>('/api/v3/focus-times', {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        console.log('[pauseFocusSession] API call succeeded');
+      }
+    } catch (e) {
+      console.warn('[pauseFocusSession] API call failed:', e);
+    }
+
+    localStorage.setItem(sessionKey, JSON.stringify(state));
+  },
+
+  resumeFocusSession: async (_uuid: string): Promise<void> => {
+    const sessionKey = 'astra-focus-current';
+    const raw = localStorage.getItem(sessionKey);
+    if (!raw) return;
+
+    const state = JSON.parse(raw);
+    const now = Date.now();
+    const pauseDuration = state.pauseStartTime ? (now - state.pauseStartTime) : 0;
+    state.pauseTotalTime = (state.pauseTotalTime || 0) + pauseDuration;
+    state.pauseStartTime = 0;
+    state.pauseEndTime = now;
+
+    try {
+      const user = getStoredUser();
+      if (user) {
+        const payload = {
+          ...state,
+          state: 1,
+          updateTime: now,
+        };
+        await fetchJson<any>('/api/v3/focus-times', {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        console.log('[resumeFocusSession] API call succeeded');
+      }
+    } catch (e) {
+      console.warn('[resumeFocusSession] API call failed:', e);
+    }
+
+    localStorage.setItem(sessionKey, JSON.stringify(state));
   },
 
   endFocusSession: async (id: number, duration: number, completed: boolean): Promise<{ ok: boolean }> => {
+    const sessionKey = 'astra-focus-current';
+    const raw = localStorage.getItem(sessionKey);
+
+    if (raw) {
+      const state = JSON.parse(raw);
+      const now = Date.now();
+      const totalPauseTime = state.pauseTotalTime || 0;
+      const actualEndTime = now;
+
+      try {
+        const user = getStoredUser();
+        if (user) {
+          const endPayload = {
+            ...state,
+            endTime: actualEndTime,
+            state: completed ? 0 : 0,
+            pauseTotalTime: totalPauseTime,
+            pauseStartTime: 0,
+            pauseEndTime: totalPauseTime > 0 ? now : 0,
+            updateTime: now,
+          };
+          await fetchJson<any>('/api/v3/focus-times', {
+            method: 'PUT',
+            body: JSON.stringify(endPayload),
+          });
+          console.log('[endFocusSession] API call succeeded:', { completed, duration });
+        }
+      } catch (e) {
+        console.warn('[endFocusSession] API call failed:', e);
+      }
+
+      localStorage.removeItem(sessionKey);
+    }
+
     const db = loadDB();
     const session = db.sessions.find((s) => s.id === id);
-    if (!session) throw new Error('Session not found');
-    session.duration = duration;
-    session.completed = completed;
-    session.finishedAt = new Date().toISOString();
-    if (completed && duration > 0 && session.taskId != null) {
-      const task = db.tasks.find((t) => t.id === session.taskId);
-      if (task) task.pomodoroMinutes += duration;
+    if (session) {
+      session.duration = duration;
+      session.completed = completed;
+      session.finishedAt = new Date().toISOString();
+      if (completed && duration > 0 && session.taskId != null) {
+        const task = db.tasks.find((t) => t.id === session.taskId);
+        if (task) task.pomodoroMinutes += duration;
+      }
+      saveDB(db);
     }
-    saveDB(db);
     return { ok: true };
   },
 
