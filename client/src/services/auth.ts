@@ -56,36 +56,49 @@ function buildHeaders(token?: string): Record<string, string> {
 }
 
 export async function login(identifier: string, password: string): Promise<LoginResponse> {
-  const res = await fetch(`${API_BASE}/api/v3/accounts/password-login`, {
-    method: 'POST',
-    headers: buildHeaders(),
-    body: JSON.stringify({ email: identifier, password }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-  if (!res.ok) {
-    const text = await res.text();
-    let message = '登录失败，请检查账号或密码';
-    try {
-      const data = JSON.parse(text);
-      if (data?.message) message = data.message;
-      else if (data?.error) message = data.error;
-    } catch {}
-    throw new Error(message);
+  try {
+    const res = await fetch(`${API_BASE}/api/v3/accounts/password-login`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ email: identifier, password }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      let message = '登录失败，请检查账号或密码';
+      try {
+        const data = JSON.parse(text);
+        if (data?.message) message = data.message;
+        else if (data?.error) message = data.error;
+      } catch {}
+      throw new Error(message);
+    }
+
+    const data: LoginResponse = await res.json();
+    setToken(data.token);
+    const user: AuthenticatedUser = {
+      id: data.user.id,
+      email: data.user.email,
+      phone: data.user.phone,
+      nickname: data.user.nickname,
+      avatarUrl: data.user.avatarUrl,
+      school: data.user.school,
+      vipType: data.user.vipType,
+    };
+    setStoredUser(user);
+    return data;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('登录请求超时，请检查网络连接');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  const data: LoginResponse = await res.json();
-  setToken(data.token);
-  const user: AuthenticatedUser = {
-    id: data.user.id,
-    email: data.user.email,
-    phone: data.user.phone,
-    nickname: data.user.nickname,
-    avatarUrl: data.user.avatarUrl,
-    school: data.user.school,
-    vipType: data.user.vipType,
-  };
-  setStoredUser(user);
-  return data;
 }
 
 export function logout(): void {
