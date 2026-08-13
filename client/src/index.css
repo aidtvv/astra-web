@@ -21,6 +21,34 @@
   100% { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+@layer utilities {
+  .animate-popover {
+    animation: popover-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@keyframes popover-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes keepAliveFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 :root {
   --bg-primary: #FFFFFF;
   --bg-secondary: #F7F6F3;

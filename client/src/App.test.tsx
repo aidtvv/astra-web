@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import App from './App';
+import { ThemeProvider } from './lib/ThemeProvider';
 import { useStore } from './store';
 
 describe('App shell', () => {
@@ -25,7 +26,9 @@ describe('App shell', () => {
   it('renders a main content region', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
-        <App />
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
       </MemoryRouter>
     );
     expect(screen.getByRole('main')).toBeTruthy();

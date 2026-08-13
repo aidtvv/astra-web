@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import FocusTimer from '../components/FocusTimer';
 import { useStore } from '../store';
+import { useLocalKanbanData } from '../lib/useLocalFirstData';
 import type { PomodoroSession } from '../types';
 
 const MODE_BADGE: Record<string, string> = {
@@ -18,10 +19,8 @@ function todaySessions(sessions: PomodoroSession[]): PomodoroSession[] {
 }
 
 export default function FocusPage() {
+  useLocalKanbanData();
   const sessions = useStore((s) => s.sessions);
-  const loadAll = useStore((s) => s.loadAll);
-
-  useEffect(() => { loadAll(); }, [loadAll]);
 
   const todays = useMemo(() => todaySessions(sessions), [sessions]);
 

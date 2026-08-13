@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, useSensor, useSensors, useDroppable, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useStore } from '../store';
+import { useLocalKanbanData } from '../lib/useLocalFirstData';
 import type { Task, Column } from '../types';
 import SortableTaskCard from '../components/SortableTaskCard';
 import TaskCard from '../components/TaskCard';
@@ -28,10 +29,7 @@ function ColumnDropZone({ columnId, children }: { columnId: string; children: Re
 }
 
 export default function KanbanPage() {
-  const columns = useStore((s) => s.columns);
-  const tasks = useStore((s) => s.tasks);
-  const loading = useStore((s) => s.loading);
-  const loadAll = useStore((s) => s.loadAll);
+  const { columns, tasks, loading } = useLocalKanbanData();
   const moveTaskToIndex = useStore((s) => s.moveTaskToIndex);
   const addColumn = useStore((s) => s.addColumn);
   const updateColumn = useStore((s) => s.updateColumn);
@@ -47,8 +45,6 @@ export default function KanbanPage() {
   const [editingColumnTitle, setEditingColumnTitle] = useState('');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-
-  useEffect(() => { loadAll(); }, [loadAll]);
 
   const filteredTasks = useMemo(
     () => (query.trim() ? tasks.filter((t) => t.title.toLowerCase().includes(query.trim().toLowerCase())) : tasks),

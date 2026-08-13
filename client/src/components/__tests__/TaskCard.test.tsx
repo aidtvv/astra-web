@@ -48,8 +48,8 @@ describe('TaskCard', () => {
         <TaskCard task={task} onEdit={() => {}} />
       </MemoryRouter>
     );
-    expect(screen.getByText('编辑')).toBeTruthy();
-    expect(screen.getByText('专注')).toBeTruthy();
-    expect(screen.getByText('删除')).toBeTruthy();
+    expect(screen.getByTitle('编辑')).toBeTruthy();
+    expect(screen.getByTitle('专注')).toBeTruthy();
+    expect(screen.getByTitle('删除')).toBeTruthy();
   });
 });

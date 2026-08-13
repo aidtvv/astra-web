@@ -72,6 +72,8 @@ interface Store extends StoreState {
   loadStats(): Promise<void>;
   loadFocusStats(viewRange?: StatsViewRange): Promise<void>;
   setStatsViewRange(view: StatsViewRange): void;
+  setFocusStats(stats: FocusStats): void;
+  setFocusTimeRecords(records: FocusTimeRecord[]): void;
   refreshAfterFocus(): Promise<void>;
   triggerSync(): Promise<void>;
 
@@ -232,6 +234,14 @@ export const useStore = create<Store>((set, get) => ({
     const { focusTimeRecords } = get();
     const stats = api.computeStatsFromRecords(focusTimeRecords, view);
     set({ statsViewRange: view, focusStats: stats });
+  },
+
+  setFocusStats: (stats) => {
+    set({ focusStats: stats });
+  },
+
+  setFocusTimeRecords: (records) => {
+    set({ focusTimeRecords: records });
   },
 
   refreshAfterFocus: async () => {

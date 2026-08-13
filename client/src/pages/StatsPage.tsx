@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Clock,
   Calendar,
@@ -11,10 +11,24 @@ import {
   ChevronRight,
   Trophy,
   Zap,
-  PieChart,
+  PieChart as PieChartIcon,
   Activity,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  BarRectangleItem,
+} from 'recharts';
 import { useStore } from '../store';
+import { useLocalFocusStatsData } from '../lib/useLocalFirstData';
 import type { StatsViewRange } from '../types';
 
 const VIEW_OPTIONS: { value: StatsViewRange; label: string }[] = [
@@ -184,12 +198,182 @@ interface DonutSegment {
   color: string;
 }
 
+function formatShortLabel(label: string, view: StatsViewRange): string {
+  if (view === 'day') return '今天';
+  if (view === 'year') {
+    const parts = label.split('-');
+    return `${parseInt(parts[1], 10)}月`;
+  }
+  if (view === 'all') return label;
+  const parts = label.split('-');
+  if (view === 'month') return `${parseInt(parts[2], 10)}`;
+  return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
+}
+
+function getChartTitle(view: StatsViewRange): string {
+  switch (view) {
+    case 'day':
+      return '今日专注趋势';
+    case 'week':
+      return '本周专注趋势';
+    case 'month':
+      return '本月专注趋势';
+    case 'year':
+      return '年度专注趋势';
+    case 'all':
+      return '历年专注趋势';
+    default:
+      return '专注趋势';
+  }
+}
+
+/* ─────────── Recharts BarChart ─────────── */
+
+interface BarChartDatum {
+  label: string;
+  displayLabel: string;
+  value: number;
+}
+
+function FocusBarChart({
+  data,
+  loading,
+}: {
+  data: BarChartDatum[];
+  view?: StatsViewRange;
+  loading?: boolean;
+}) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  if (loading) {
+    return (
+      <div className="flex h-56 items-center justify-center">
+        <div className="flex items-end gap-1">
+          {Array.from({ length: 12 }).map((_, idx) => (
+            <div
+              key={idx}
+              className="w-6 animate-pulse rounded-t-md bg-[color:var(--surface-elevated)]"
+              style={{ height: `${20 + Math.random() * 60}%` }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const hasData = data.some((d) => d.value > 0);
+  if (!hasData) {
+    return (
+      <div className="flex h-56 items-center justify-center text-sm text-[color:var(--text-muted)]">
+        暂无专注数据
+      </div>
+    );
+  }
+
+  const showEveryLabel = data.length <= 14;
+  const interval = showEveryLabel ? 0 : Math.ceil(data.length / 14);
+
+  return (
+    <div className="h-64 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={data}
+          margin={{ top: 8, right: 4, left: -16, bottom: 0 }}
+          barCategoryGap="15%"
+        >
+          <defs>
+            <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--tag-red)" stopOpacity={1} />
+              <stop offset="60%" stopColor="var(--tag-red)" stopOpacity={0.7} />
+              <stop offset="100%" stopColor="var(--tag-red)" stopOpacity={0.15} />
+            </linearGradient>
+            <linearGradient id="barGradientHover" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--tag-red)" stopOpacity={1} />
+              <stop offset="100%" stopColor="var(--tag-red)" stopOpacity={0.4} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="var(--border-color)"
+            strokeOpacity={0.4}
+          />
+          <XAxis
+            dataKey="displayLabel"
+            tickLine={false}
+            axisLine={false}
+            interval={interval}
+            tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+            dy={6}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+            tickFormatter={(v: number) => formatDurationShort(v)}
+            width={48}
+          />
+          <Tooltip
+            cursor={{ fill: 'var(--hover-bg)', radius: 4 }}
+            content={({ active, payload }) => {
+              if (!active || !payload || payload.length === 0) return null;
+              const item = payload[0].payload as BarChartDatum;
+              return (
+                <div
+                  className="rounded-xl border border-[color:var(--border-color)] px-3 py-2 text-xs shadow-lg"
+                  style={{
+                    background: 'var(--glass-bg)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                  }}
+                >
+                  <div className="mb-0.5 font-medium text-[color:var(--text-primary)]">
+                    {item.displayLabel}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[color:var(--text-secondary)]">
+                    <span className="inline-block h-2 w-2 rounded-sm bg-[color:var(--tag-red)]" />
+                    {formatDuration(item.value)}
+                  </div>
+                </div>
+              );
+            }}
+          />
+          <Bar
+            dataKey="value"
+            onMouseEnter={(_, idx) => setHoveredIdx(idx)}
+            onMouseLeave={() => setHoveredIdx(null)}
+            shape={(
+              props: {
+                x: number; y: number; width: number; height: number; index: number;
+              } & BarRectangleItem,
+            ) => {
+              const { x, y, width, height, index } = props;
+              if (height <= 0) return null;
+              const isHovered = hoveredIdx === index;
+              return (
+                <rect
+                  x={x}
+                  y={y}
+                  width={width}
+                  height={height}
+                  rx={6}
+                  ry={6}
+                  fill={`url(#${isHovered ? 'barGradientHover' : 'barGradient'})`}
+                  style={{ transition: 'all 0.2s ease' }}
+                />
+              );
+            }}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/* ─────────── Recharts DonutChart ─────────── */
+
 function DonutChart({ segments, size = 140 }: { segments: DonutSegment[]; size?: number }) {
   const total = segments.reduce((sum, s) => sum + s.value, 0);
-  const radius = size / 2 - 6;
-  const strokeWidth = 14;
-  const circumference = 2 * Math.PI * radius;
-  let accumulated = 0;
 
   if (total === 0) {
     return (
@@ -202,199 +386,85 @@ function DonutChart({ segments, size = 140 }: { segments: DonutSegment[]; size?:
     );
   }
 
-  return (
-    <svg width={size} height={size} className="-rotate-90">
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="var(--border-color)"
-        strokeWidth={strokeWidth}
-      />
-      {segments.map((seg, idx) => {
-        const fraction = seg.value / total;
-        const dashLength = fraction * circumference;
-        const dashOffset = circumference - (accumulated / total) * circumference;
-        accumulated += seg.value;
-        return (
-          <circle
-            key={idx}
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            stroke={seg.color}
-            strokeWidth={strokeWidth}
-            strokeDasharray={`${dashLength} ${circumference - dashLength}`}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="butt"
-            className="transition-all duration-500"
-          />
-        );
-      })}
-      <g className="rotate-90" style={{ transformOrigin: `${size / 2}px ${size / 2}px` }}>
-        <text
-          x={size / 2}
-          y={size / 2 - 4}
-          textAnchor="middle"
-          fill="currentColor"
-          className="text-lg font-bold"
-          style={{ transform: 'rotate(90deg)', transformOrigin: 'center', color: 'var(--text-primary)' }}
-        >
-          {formatDurationShort(total)}
-        </text>
-        <text
-          x={size / 2}
-          y={size / 2 + 16}
-          textAnchor="middle"
-          fill="currentColor"
-          className="text-xs"
-          style={{ transform: 'rotate(90deg)', transformOrigin: 'center', color: 'var(--text-muted)' }}
-        >
-          总时长
-        </text>
-      </g>
-    </svg>
-  );
-}
-
-function VerticalBarChart({
-  data,
-  labels,
-  view,
-  loading,
-}: {
-  data: number[];
-  labels: string[];
-  view: StatsViewRange;
-  loading?: boolean;
-}) {
-  const max = Math.max(...data, 1);
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-
-  if (loading) {
-    return (
-      <div className="flex h-56 items-center justify-center">
-        <div className="flex items-end gap-1">
-          {Array.from({ length: Math.min(data.length, 12) }).map((_, idx) => (
-            <div
-              key={idx}
-              className="w-6 animate-pulse rounded-t-md bg-[color:var(--surface-elevated)]"
-              style={{ height: `${20 + Math.random() * 60}%` }}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (data.length === 0 || data.every((d) => d === 0)) {
-    return (
-      <div className="flex h-56 items-center justify-center text-sm text-[color:var(--text-muted)]">
-        暂无专注数据
-      </div>
-    );
-  }
-
-  const isYear = view === 'year';
-  const isAll = view === 'all';
-  const barWidth = view === 'month' ? 12 : view === 'week' ? 28 : view === 'day' ? 80 : 32;
-  const showLabels = data.length <= 31;
+  const outerRadius = size / 2 - 2;
+  const innerRadius = outerRadius - 18;
 
   return (
-    <div className="relative">
-      <div className="flex items-stretch gap-1" style={{ height: 200 }}>
-        {data.map((minutes, idx) => {
-          if (minutes <= 0) {
-            return <div key={idx} style={{ width: barWidth }} className="shrink-0 self-end" />;
-          }
-          const heightPct = (minutes / max) * 100;
-          const intensity = minutes / max;
-          const bgColor = intensity > 0.75
-            ? 'bg-[color:var(--tag-red)]'
-            : intensity > 0.5
-              ? 'bg-[color:var(--tag-red)]/75'
-              : intensity > 0.25
-                ? 'bg-[color:var(--tag-red)]/50'
-                : 'bg-[color:var(--tag-red)]/25';
-
-          return (
+    <div style={{ width: size, height: size }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={segments}
+            dataKey="value"
+            nameKey="label"
+            cx="50%"
+            cy="50%"
+            innerRadius={innerRadius}
+            outerRadius={outerRadius}
+            startAngle={90}
+            endAngle={-270}
+            stroke="none"
+            isAnimationActive
+            animationDuration={600}
+          >
+            {segments.map((seg, idx) => (
+              <Cell key={idx} fill={seg.color} />
+            ))}
+          </Pie>
+          {/* Center label rendered as foreignObject for crisp text */}
+          <foreignObject x={0} y={0} width={size} height={size}>
             <div
-              key={idx}
-              className="group relative flex flex-1 flex-col items-center self-end"
-              style={{ minWidth: 0, maxWidth: `${barWidth}px`, height: '100%' }}
-              onMouseEnter={() => setHoveredIdx(idx)}
-              onMouseLeave={() => setHoveredIdx(null)}
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              {hoveredIdx === idx && (
-                <div className="absolute -top-9 z-10 whitespace-nowrap rounded-lg bg-[color:var(--surface-elevated)] border border-[color:var(--border-color)] px-2 py-1 text-xs text-[color:var(--text-primary)] shadow-lg">
-                  {labels[idx] ? formatShortLabel(labels[idx], view) : ''} · {formatDurationShort(minutes)}
-                </div>
-              )}
-              <div className="flex h-full w-full items-end justify-center">
-                <div
-                  className={`w-full rounded-t-md transition-all duration-300 ${bgColor} group-hover:brightness-110`}
-                  style={{ height: `${heightPct}%` }}
-                />
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                  lineHeight: 1.2,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {formatDurationShort(total)}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-muted)',
+                  marginTop: 4,
+                }}
+              >
+                总时长
               </div>
             </div>
-          );
-        })}
-      </div>
-
-      {showLabels && (
-        <div className="mt-2 flex gap-1">
-          {data.map((_, idx) => (
-            <div
-              key={idx}
-              className="flex flex-1 items-center justify-center text-[10px] tabular-nums text-[color:var(--text-muted)]"
-              style={{ minWidth: 0 }}
-            >
-              {isYear || isAll ? '' : formatShortLabel(labels[idx], view)}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-1 flex items-center justify-end gap-3 text-[10px] text-[color:var(--text-muted)]">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[color:var(--tag-red)]/25" /> 低</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[color:var(--tag-red)]/50" /> 中低</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[color:var(--tag-red)]/75" /> 中高</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[color:var(--tag-red)]" /> 高</span>
-      </div>
+          </foreignObject>
+        </PieChart>
+      </ResponsiveContainer>
     </div>
   );
 }
 
-function formatShortLabel(label: string, view: StatsViewRange): string {
-  if (view === 'day') return '今天';
-  if (view === 'year' || view === 'all') return label;
-  const parts = label.split('-');
-  if (view === 'month') return `${parseInt(parts[2], 10)}`;
-  return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
-}
+/* ─────────── Main StatsPage ─────────── */
 
 export default function StatsPage() {
-  const focusStats = useStore((s) => s.focusStats);
-  const focusTimeRecords = useStore((s) => s.focusTimeRecords);
   const statsViewRange = useStore((s) => s.statsViewRange);
-  const focusStatsLoading = useStore((s) => s.focusStatsLoading);
-  const loadFocusStats = useStore((s) => s.loadFocusStats);
   const setStatsViewRange = useStore((s) => s.setStatsViewRange);
 
-  useEffect(() => {
-    if (focusTimeRecords.length === 0) {
-      loadFocusStats();
-    }
-  }, [loadFocusStats, focusTimeRecords.length]);
+  const { records: focusTimeRecords, focusStats, loading: focusStatsLoading, refresh } = useLocalFocusStatsData(statsViewRange);
 
   const handleViewChange = (view: StatsViewRange) => {
     setStatsViewRange(view);
   };
 
   const handleRefresh = () => {
-    loadFocusStats();
+    refresh();
   };
 
   const dailyLabels = useMemo(
@@ -404,7 +474,6 @@ export default function StatsPage() {
 
   const dailyData = useMemo(() => {
     if (focusTimeRecords.length === 0) {
-      console.log('[StatsPage] dailyData: focusTimeRecords is empty, returning zeros');
       return dailyLabels.map(() => 0);
     }
 
@@ -438,21 +507,11 @@ export default function StatsPage() {
         break;
     }
 
-    console.log('[StatsPage] dailyData computing:', {
-      view: statsViewRange,
-      rangeStart: new Date(rangeStart).toISOString(),
-      rangeEnd: rangeEnd === Number.MAX_SAFE_INTEGER ? 'MAX' : new Date(rangeEnd).toISOString(),
-      totalRecords: focusTimeRecords.length,
-      labels: dailyLabels,
-    });
-
     const aggregated: Record<string, number> = {};
-    let matchedRecords = 0;
     for (const record of focusTimeRecords) {
       if (record.startTime < rangeStart || record.startTime >= rangeEnd) continue;
       const duration = Math.max(0, Math.round((record.endTime - record.startTime - (record.pauseTotalTime || 0)) / 60000));
       if (duration <= 0) continue;
-      matchedRecords++;
 
       if (statsViewRange === 'year') {
         const d = new Date(record.startTime);
@@ -469,10 +528,16 @@ export default function StatsPage() {
       }
     }
 
-    const result = dailyLabels.map((label) => aggregated[label] || 0);
-    console.log('[StatsPage] dailyData result:', { matchedRecords, aggregated, result });
-    return result;
+    return dailyLabels.map((label) => aggregated[label] || 0);
   }, [dailyLabels, focusTimeRecords, statsViewRange]);
+
+  const chartData: BarChartDatum[] = useMemo(() => {
+    return dailyLabels.map((label, idx) => ({
+      label,
+      displayLabel: formatShortLabel(label, statsViewRange),
+      value: dailyData[idx],
+    }));
+  }, [dailyLabels, dailyData, statsViewRange]);
 
   const kpis = useMemo(() => [
     {
@@ -558,16 +623,16 @@ export default function StatsPage() {
         </button>
       </div>
 
-      {/* View Range Selector */}
-      <div className="flex items-center gap-1 rounded-xl bg-[color:var(--surface-color)] p-1 shadow-sm">
+      {/* View Range Selector - Apple Segmented Control */}
+      <div className="inline-flex items-center gap-0.5 rounded-lg bg-[color:var(--surface-elevated)] p-0.5 shadow-sm">
         {VIEW_OPTIONS.map((opt) => (
           <button
             key={opt.value}
             onClick={() => handleViewChange(opt.value)}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+            className={`relative rounded-md px-3 py-1.5 text-[13px] font-medium transition-all duration-200 ${
               statsViewRange === opt.value
-                ? 'bg-[color:var(--accent-color)] text-white shadow-sm'
-                : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--hover-bg)] hover:text-[color:var(--text-primary)]'
+                ? 'bg-[color:var(--surface-color)] text-[color:var(--text-primary)] shadow-[0_1px_3px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.08)]'
+                : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-secondary)]'
             }`}
           >
             {opt.label}
@@ -592,19 +657,19 @@ export default function StatsPage() {
 
       {/* Bento Grid */}
       <div className="grid grid-cols-12 gap-4">
-        {/* Left Column: 8 cols (66%) */}
+        {/* Left Column: 8 cols */}
         <div className="col-span-12 space-y-4 lg:col-span-8">
-          {/* Daily Focus Trend - Vertical Bar Chart */}
+          {/* Focus Trend */}
           <div className="rounded-2xl bg-[color:var(--card-glass-bg)] border border-[color:var(--card-glass-border)] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--text-primary)]">
                 <Activity size={15} strokeWidth={1.75} className="text-[color:var(--text-muted)]" />
-                每日专注趋势
+                {getChartTitle(statsViewRange)}
               </h2>
               <span className="text-xs text-[color:var(--text-muted)]">单位：分钟</span>
             </div>
             <div className="mt-4">
-              <VerticalBarChart data={dailyData} labels={dailyLabels} view={statsViewRange} loading={focusStatsLoading} />
+              <FocusBarChart data={chartData} view={statsViewRange} loading={focusStatsLoading} />
             </div>
           </div>
 
@@ -655,7 +720,7 @@ export default function StatsPage() {
           </div>
         </div>
 
-        {/* Right Column: 4 cols (33%) */}
+        {/* Right Column: 4 cols */}
         <div className="col-span-12 space-y-4 lg:col-span-4">
           {/* Highlights Widget */}
           <div className="relative overflow-hidden rounded-2xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-[color:var(--card-glass-border)]"
@@ -704,7 +769,7 @@ export default function StatsPage() {
               {/* Top Category */}
               <div className="flex items-center gap-3 rounded-xl bg-[color:var(--glass-bg)] border border-[color:var(--glass-border)] p-3 backdrop-blur-sm">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
-                  <PieChart size={18} strokeWidth={1.75} className="text-emerald-500" />
+                  <PieChartIcon size={18} strokeWidth={1.75} className="text-emerald-500" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">

@@ -812,7 +812,11 @@ export const api = {
 
   getSessions: async (): Promise<PomodoroSession[]> => {
     const db = loadDB();
-    return [...db.sessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    return [...db.sessions].sort((a, b) => {
+      const ta = a.startedAt || '';
+      const tb = b.startedAt || '';
+      return tb.localeCompare(ta);
+    });
   },
 
   getDaily: async (days = 30): Promise<DailyStat[]> => {

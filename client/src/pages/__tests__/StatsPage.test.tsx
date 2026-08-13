@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import StatsPage from '../StatsPage';
 import { useStore, initialStore } from '../../store';
 
@@ -56,9 +57,23 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: Infinity,
+      gcTime: Infinity,
+      refetchOnMount: false,
+    },
+  },
+});
+
 describe('StatsPage', () => {
   it('renders KPI cards with formatted values', () => {
-    render(<StatsPage />);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StatsPage />
+      </QueryClientProvider>
+    );
     expect(screen.getByText('总专注时长')).toBeTruthy();
     expect(screen.getByText('2 小时 55 分钟')).toBeTruthy();
     expect(screen.getByText('完成会话')).toBeTruthy();
@@ -69,7 +84,11 @@ describe('StatsPage', () => {
   });
 
   it('renders view range selector', () => {
-    render(<StatsPage />);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StatsPage />
+      </QueryClientProvider>
+    );
     expect(screen.getByText('日')).toBeTruthy();
     expect(screen.getByText('周')).toBeTruthy();
     expect(screen.getByText('月')).toBeTruthy();
@@ -78,8 +97,12 @@ describe('StatsPage', () => {
   });
 
   it('renders bento grid sections', () => {
-    render(<StatsPage />);
-    expect(screen.getByText('每日专注趋势')).toBeTruthy();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StatsPage />
+      </QueryClientProvider>
+    );
+    expect(screen.getByText('本周专注趋势')).toBeTruthy();
     expect(screen.getByText('最近专注')).toBeTruthy();
     expect(screen.getByText('专注亮点')).toBeTruthy();
     expect(screen.getByText('任务分类占比')).toBeTruthy();

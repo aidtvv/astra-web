@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutGrid, Clock, BarChart3, LogOut } from 'lucide-react';
 import { useStore } from '../store';
 import SyncStatusButton from './SyncStatusButton';
-import { ThemeSwitcher } from './ThemeSwitcher';
+import { AppearanceControls } from './ThemeSwitcher';
 
 const NAV_ITEMS = [
   { to: '/', label: '看板', icon: LayoutGrid },
@@ -19,9 +19,10 @@ export default function Sidebar() {
   const displayName = user?.nickname ?? '未登录';
 
   return (
-    <aside className="fixed left-4 top-4 bottom-4 z-50 flex w-60 flex-col overflow-hidden rounded-3xl border border-[color:var(--border-color)] bg-[color:var(--bg-secondary)] shadow-lg">
-      <div className="flex flex-1 flex-col p-4">
-        <div className="flex items-center justify-between px-2 py-3">
+    <aside className="fixed left-4 top-4 bottom-4 z-50 flex w-60 flex-col overflow-visible rounded-3xl border border-[color:var(--border-color)] bg-[color:var(--bg-secondary)] shadow-lg">
+      <div className="flex flex-1 flex-col overflow-hidden rounded-3xl">
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--text-primary)] text-sm font-bold text-[color:var(--bg-primary)]">
               A
@@ -30,7 +31,8 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <nav className="mt-4 flex flex-1 flex-col gap-1">
+        {/* Nav */}
+        <nav className="mt-1 flex shrink-0 flex-col gap-1 px-3">
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
@@ -52,12 +54,17 @@ export default function Sidebar() {
           ))}
         </nav>
 
-        <div className="mt-auto flex flex-col gap-2">
-          <div className="flex justify-center">
-            <ThemeSwitcher />
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Bottom area */}
+        <div className="shrink-0 px-3 pb-3 pt-2">
+          {/* Appearance controls: modes + theme picker in one compact row */}
+          <div className="flex items-center justify-center">
+            <AppearanceControls />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="mt-2 flex items-center gap-2">
             <SyncStatusButton />
             <div className="min-w-0 flex-1">
               <button
@@ -75,7 +82,7 @@ export default function Sidebar() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-full px-2.5 py-2.5 transition-colors hover:bg-[color:var(--hover-bg)]">
+          <div className="mt-2 flex items-center gap-3 rounded-full px-2.5 py-2.5 transition-colors hover:bg-[color:var(--hover-bg)]">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent-color)] text-sm font-semibold text-white shadow-sm">
               {initial}
             </div>
