@@ -9,8 +9,7 @@ import {
   bulkReplaceColumns,
   bulkReplaceTasks,
   bulkReplaceSessions,
-  upsertFocusRecords,
-  deleteFocusRecordsOlderThan,
+  replaceFocusRecords,
   initializeDefaultColumns,
   type ColumnRecord,
   type TaskRecord,
@@ -23,10 +22,7 @@ const HASH_KEYS = {
   KANBAN: 'hash:kanban',
   FOCUS_RECORDS: 'hash:focus-records',
   LAST_SYNC: 'meta:last-sync',
-  PRUNE_THRESHOLD: 'meta:prune-threshold',
 };
-
-const TTL_30_DAYS = 30 * 24 * 60 * 60 * 1000;
 
 export interface SyncResult<T> {
   data: T;
@@ -300,15 +296,8 @@ export async function syncFocusRecords(): Promise<SyncResult<FocusRecordsData>> 
       };
     }
 
-    const cutoffTime = Date.now() - TTL_30_DAYS;
-    const prunedRecords = serverRecords.filter((r) => r.startTime >= cutoffTime);
-
-    await upsertFocusRecords(prunedRecords);
-
-    const deletedCount = await deleteFocusRecordsOlderThan(cutoffTime);
-    if (deletedCount > 0) {
-      console.info(`[syncFocusRecords] Pruned ${deletedCount} records older than 30 days`);
-    }
+    console.log(`[syncFocusRecords] Saving ${serverRecords.length} records to local DB`);
+    await replaceFocusRecords(serverRecords);
 
     const lastSync = Date.now();
     await setMeta(HASH_KEYS.LAST_SYNC, String(lastSync));
@@ -344,6 +333,5 @@ export async function getLastSyncTime(): Promise<number> {
 }
 
 export async function performPruning(): Promise<number> {
-  const cutoffTime = Date.now() - TTL_30_DAYS;
-  return deleteFocusRecordsOlderThan(cutoffTime);
+  return 0;
 }
